@@ -1,6 +1,9 @@
 import { useState } from "react";
 import "./index.css";
 import Relatorio from "./screens/Relatorio";
+import Limpar from "./screens/Limpar";
+import Cliques from "./screens/Cliques";
+import Config from "./screens/Config";
 
 /* ---- ícones SVG (zero emoji, regra do Manual) ---- */
 const ICON: Record<string, string> = {
@@ -58,18 +61,6 @@ const TABS: { id: TabId; label: string; sub: string }[] = [
   { id: "clicks", label: "Cliques", sub: "tracker de links" },
   { id: "config", label: "Config", sub: "conta & export" },
 ];
-
-function Placeholder({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-8 text-center">
-      <div className="text-[var(--color-teal)] text-sm font-bold uppercase tracking-widest">{title}</div>
-      <p className="mt-3 text-[var(--color-slate)] text-sm max-w-md mx-auto">{desc}</p>
-      <div className="mt-4 inline-block text-[11px] text-[var(--color-slate)] border border-[var(--color-steel)] rounded-full px-3 py-1">
-        em construção — Fase 2-5
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("report");
@@ -130,16 +121,10 @@ export default function App() {
         </header>
 
         <div className="p-7 max-w-4xl">
-          {tab === "instagram" && (
-            <Placeholder title="Instagram" desc="Aqui vai o webview logado do Instagram com o painel injetado: limpar quem não retribui (ritmado, whitelist) e achar alvos." />
-          )}
+          {tab === "instagram" && <Limpar />}
           {tab === "report" && <Relatorio />}
-          {tab === "clicks" && (
-            <Placeholder title="Cliques" desc="Gerencia o tracker de links da bio (criar link + gráfico de cliques por dia). Fala com o worker direto — sem a trava CSP do Instagram." />
-          )}
-          {tab === "config" && (
-            <Placeholder title="Config" desc="Conta conectada, whitelist protegida e export CSV do relatório e dos cliques." />
-          )}
+          {tab === "clicks" && <Cliques />}
+          {tab === "config" && <Config />}
         </div>
       </main>
     </div>
