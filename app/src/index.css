@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* ---- Identidade Codex Arena ---- */
+@theme {
+  --color-void: #0b0e17;
+  --color-void2: #10141f;
+  --color-panel: #0d1420;
+  --color-panel2: #0a0e15;
+  --color-teal: #00e5c9;
+  --color-teal2: #7ef7e6;
+  --color-teal-dim: #0aa892;
+  --color-coral: #ff4d3d;
+  --color-coral2: #ff8a5c;
+  --color-paper: #e8e4dc;
+  --color-ink: #c6ccd6;
+  --color-slate: #8892a0;
+  --color-line: #1b2536;
+  --color-steel: #232c3b;
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--color-void);
+  color: var(--color-paper);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* aurora sutil no fundo (respeita reduced-motion) */
+.aurora {
+  position: fixed; inset: -20% 0 auto 0; height: 62vh; z-index: 0; pointer-events: none; filter: blur(72px);
+  background:
+    radial-gradient(40% 55% at 22% 26%, rgba(0,229,201,.12), transparent 60%),
+    radial-gradient(45% 50% at 82% 16%, rgba(255,77,61,.09), transparent 62%);
+  animation: auroraPan 26s ease-in-out infinite;
+}
+@keyframes auroraPan { 0%,100% { transform: translate3d(-3%,-2%,0) scale(1.05); } 50% { transform: translate3d(3%,3%,0) scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .aurora { animation: none; } }
+
+::-webkit-scrollbar { width: 9px; }
+::-webkit-scrollbar-thumb { background: #1c2636; border-radius: 8px; }
+::selection { background: var(--color-teal); color: var(--color-void); }
