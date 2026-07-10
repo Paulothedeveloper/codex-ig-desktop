@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex IG — Spike</title>
+    <script type="module" src="/src/main.ts" defer></script>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0b0e17; color: #e8e4dc; font: 15px/1.5 "Space Grotesk", system-ui, sans-serif; }
+      main { max-width: 620px; margin: 0 auto; padding: 40px 24px; }
+      h1 { font-size: 22px; font-weight: 800; }
+      h1 b { color: #00e5c9; }
+      p.sub { color: #8892a0; font-size: 13.5px; }
+      ol { color: #c6ccd6; font-size: 13.5px; line-height: 1.9; }
+      button { margin-top: 14px; width: 100%; border: 0; border-radius: 12px; padding: 14px; font: inherit; font-weight: 800;
+        background: linear-gradient(135deg, #00e5c9, #0aa892); color: #04120f; cursor: pointer; }
+      button:hover { filter: brightness(1.06); }
+      #out { margin-top: 16px; background: #0d1420; border: 1px solid #1b2536; border-radius: 12px; padding: 14px;
+        font: 13px ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+      #out.ok { border-color: #00e5c9; color: #7ef7e6; }
+      #out.err { border-color: #ff4d3d; color: #ff8a5c; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><b>Codex IG</b> — Spike do Motor B</h1>
+      <p class="sub">Prova: o Rust lê a sessão do webview do Instagram e chama a API interna autenticado.</p>
+      <ol>
+        <li>Na outra janela (<b>Codex IG — Instagram</b>), <b>faça login</b> normal.</li>
+        <li>Volte aqui e clique no botão.</li>
+        <li>Se vier "MOTOR B VIÁVEL", o app tá provado.</li>
+      </ol>
+      <button id="run">Testar sessão (ler cookie + chamar a API)</button>
+      <div id="out">— aguardando —</div>
+    </main>
+  </body>
+</html>
