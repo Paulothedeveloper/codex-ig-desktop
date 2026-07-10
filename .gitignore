@@ -1,0 +1,18 @@
+# deps / build
+node_modules/
+dist/
+build/
+src-tauri/target/
+# segredos — NUNCA commitar (regra do Manual + LGPD)
+.env
+.env.*
+*.pem
+*.key
+*.keystore
+secrets.*
+# tauri signing / updater keys
+*.tauri-key
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
