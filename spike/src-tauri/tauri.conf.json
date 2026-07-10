@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "spike",
+  "productName": "Codex IG",
   "version": "0.1.0",
-  "identifier": "com.paulo.spike",
+  "identifier": "com.paulocodex.codexig.spike",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,9 +13,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "spike",
-        "width": 800,
-        "height": 600
+        "title": "Codex IG — Spike (teste do Motor B)",
+        "width": 820,
+        "height": 640
       }
     ],
     "security": {
