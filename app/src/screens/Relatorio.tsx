@@ -1,12 +1,28 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ensureAccount, saveSnapshot, growthSeries, whoLeft } from "../db";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Graph = {
   following_count: number;
   followers_count: number;
   non_followers: IgUser[];
+  followers?: IgUser[];
 };
+
+function Spark({ vals }: { vals: number[] }) {
+  if (vals.length < 2) return null;
+  const w = 520, h = 60;
+  const min = Math.min(...vals), max = Math.max(...vals), rng = max - min || 1;
+  const pts = vals.map((v, i) => `${((i / (vals.length - 1)) * w).toFixed(1)},${(h - 4 - ((v - min) / rng) * (h - 8)).toFixed(1)}`).join(" ");
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+      <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#00e5c9" stopOpacity="0.28" /><stop offset="1" stopColor="#00e5c9" stopOpacity="0" /></linearGradient></defs>
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="url(#sg)" />
+      <polyline points={pts} fill="none" stroke="#00e5c9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 type Post = { code: string; like: number; cmt: number; views: number; taken_at: number; caption: string };
 
 function Stat({ v, label, coral }: { v: string | number; label: string; coral?: boolean }) {
@@ -25,6 +41,8 @@ export default function Relatorio() {
   const [err, setErr] = useState("");
   const [graph, setGraph] = useState<Graph | null>(null);
   const [posts, setPosts] = useState<Post[] | null>(null);
+  const [growth, setGrowth] = useState<{ ts: number; followers: number }[]>([]);
+  const [diff, setDiff] = useState<{ lost: number; gained: number; prevTs: number | null } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -32,6 +50,14 @@ export default function Relatorio() {
     try {
       const g = await invoke<Graph>("ig_graph");
       setGraph(g);
+      // snapshot + crescimento no tempo (SQLite) — bônus, não quebra o relatório
+      try {
+        const uid = await invoke<string>("ig_session_ok");
+        const accId = await ensureAccount(uid);
+        await saveSnapshot(accId, g.following_count, g.followers_count, (g.followers || []).map((u) => u.pk));
+        setGrowth(await growthSeries(accId));
+        setDiff(await whoLeft(accId));
+      } catch { /* ignora */ }
       try {
         setPosts(await invoke<Post[]>("ig_feed", { count: 12 }));
       } catch {
@@ -86,6 +112,28 @@ export default function Relatorio() {
 
       {graph && (
         <div className="space-y-6">
+          {growth.length >= 2 ? (
+            <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+              <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)] mb-2">Crescimento de seguidores</div>
+              <Spark vals={growth.map((p) => p.followers)} />
+              <div className="flex justify-between text-[12px] text-[var(--color-slate)] mt-2">
+                <span>{new Date(growth[0].ts).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                <span className="font-bold" style={{ color: growth[growth.length - 1].followers - growth[0].followers >= 0 ? "#00e5c9" : "#ff8a5c" }}>
+                  {growth[growth.length - 1].followers - growth[0].followers >= 0 ? "+" : ""}
+                  {nf.format(growth[growth.length - 1].followers - growth[0].followers)} no período
+                </span>
+                <span>hoje</span>
+              </div>
+              {diff && diff.prevTs && (diff.lost || diff.gained) ? (
+                <div className="flex gap-2 mt-3 text-[11px]">
+                  <span className="rounded-full border border-[#43221d] text-[var(--color-coral2)] px-3 py-1">deixaram: <b className="text-[var(--color-coral)]">{diff.lost}</b></span>
+                  <span className="rounded-full border border-[var(--color-steel)] text-[var(--color-slate)] px-3 py-1">novos: <b className="text-[var(--color-teal)]">{diff.gained}</b></span>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-[12px] text-[var(--color-slate)]">Crescimento no tempo: guardo 1 ponto/dia (SQLite local). Volte amanhã pra ver a curva.</div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat v={nf.format(graph.following_count)} label="seguindo" />
             <Stat v={nf.format(graph.followers_count)} label="seguidores" />
