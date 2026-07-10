@@ -45,6 +45,48 @@ async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
     ig_api::destroy(&s, &pk).await
 }
 
+/// Público-alvo: seguidores dos concorrentes, tirando quem eu já sigo (fila assistida).
+#[tauri::command]
+async fn ig_targets(
+    app: tauri::AppHandle,
+    competitors: Vec<String>,
+    cap: Option<u32>,
+) -> Result<Vec<ig_api::IgUser>, String> {
+    let s = sess(&app).await?;
+    let cap = cap.unwrap_or(300) as usize;
+    let following = ig_api::friendships(&s, "following").await?;
+    let already: std::collections::HashSet<String> = following.iter().map(|u| u.pk.clone()).collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut agg: Vec<ig_api::IgUser> = Vec::new();
+    for name in competitors {
+        let name = name.trim().trim_start_matches('@');
+        if name.is_empty() {
+            continue;
+        }
+        let prof = match ig_api::profile(&s, name).await {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let id = prof["id"].as_str().unwrap_or("").to_string();
+        if id.is_empty() {
+            continue;
+        }
+        for u in ig_api::followers_of(&s, &id, cap).await? {
+            if u.pk == s.ds || already.contains(&u.pk) || !seen.insert(u.pk.clone()) {
+                continue;
+            }
+            agg.push(u);
+        }
+    }
+    agg.sort_by(|a, b| {
+        (a.is_private as u8)
+            .cmp(&(b.is_private as u8))
+            .then((a.full.is_empty() as u8).cmp(&(b.full.is_empty() as u8)))
+            .then((a.is_verified as u8).cmp(&(b.is_verified as u8)))
+    });
+    Ok(agg)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![Migration {
@@ -78,7 +120,8 @@ pub fn run() {
             ig_session_ok,
             ig_graph,
             ig_feed,
-            ig_destroy
+            ig_destroy,
+            ig_targets
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

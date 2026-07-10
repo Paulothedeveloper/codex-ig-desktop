@@ -1,7 +1,7 @@
 import { useState } from "react";
 import "./index.css";
 import Relatorio from "./screens/Relatorio";
-import Limpar from "./screens/Limpar";
+import Instagram from "./screens/Instagram";
 import Cliques from "./screens/Cliques";
 import Config from "./screens/Config";
 
@@ -121,7 +121,7 @@ export default function App() {
         </header>
 
         <div className="p-7 max-w-4xl">
-          {tab === "instagram" && <Limpar />}
+          {tab === "instagram" && <Instagram />}
           {tab === "report" && <Relatorio />}
           {tab === "clicks" && <Cliques />}
           {tab === "config" && <Config />}

@@ -154,6 +154,44 @@ pub async fn feed(s: &Session, count: u32) -> Result<Vec<Post>, String> {
         .unwrap_or_default())
 }
 
+/// Perfil público por username (web_profile_info) → devolve o JSON do user (id, contagens).
+pub async fn profile(s: &Session, username: &str) -> Result<serde_json::Value, String> {
+    let url = format!(
+        "https://www.instagram.com/api/v1/users/web_profile_info/?username={}",
+        urlencode(username)
+    );
+    let j = get_json(s, &url).await?;
+    Ok(j["data"]["user"].clone())
+}
+
+/// Seguidores de um perfil (concorrente PÚBLICO), paginado + ritmado, até `cap`.
+pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUser>, String> {
+    let mut out = Vec::new();
+    let mut next = String::new();
+    for _ in 0..80 {
+        let url = format!(
+            "https://www.instagram.com/api/v1/friendships/{}/followers/?count=100{}",
+            pk,
+            if next.is_empty() { String::new() } else { format!("&max_id={next}") }
+        );
+        let j = get_json(s, &url).await?;
+        out.extend(parse_users(&j));
+        next = j["next_max_id"].as_str().unwrap_or("").to_string();
+        if next.is_empty() || out.len() >= cap {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(700)).await;
+    }
+    out.truncate(cap);
+    Ok(out)
+}
+
+fn urlencode(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c.to_string() } else { format!("%{:02X}", c as u32) })
+        .collect()
+}
+
 /// Unfollow (escrita — o chamador ritma/whitelista/para no BLOCK).
 pub async fn destroy(s: &Session, pk: &str) -> Result<(), String> {
     let url = format!("https://www.instagram.com/api/v1/friendships/destroy/{pk}/");
