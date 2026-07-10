@@ -2,6 +2,7 @@
 // SQLite (tauri-plugin-sql) + comandos que usam o modulo ig_api (sessao do WebView -> API do IG).
 mod ig_api;
 use ig_api::{Post, Session};
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
 async fn sess(app: &tauri::AppHandle) -> Result<Session, String> {
@@ -60,6 +61,19 @@ pub fn run() {
                 .add_migrations("sqlite:codexig.db", migrations)
                 .build(),
         )
+        .setup(|app| {
+            // janela do Instagram (o Paulo loga aqui; os comandos ig_* leem a sessao dela)
+            WebviewWindowBuilder::new(
+                app,
+                "ig",
+                WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
+            )
+            .title("Codex IG — Instagram (faça login aqui)")
+            .initialization_script("window.__CODEX_IG__=true;")
+            .inner_size(1040.0, 800.0)
+            .build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ig_session_ok,
             ig_graph,

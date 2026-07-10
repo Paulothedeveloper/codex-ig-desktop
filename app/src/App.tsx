@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./index.css";
+import Relatorio from "./screens/Relatorio";
 
 /* ---- ícones SVG (zero emoji, regra do Manual) ---- */
 const ICON: Record<string, string> = {
@@ -132,9 +133,7 @@ export default function App() {
           {tab === "instagram" && (
             <Placeholder title="Instagram" desc="Aqui vai o webview logado do Instagram com o painel injetado: limpar quem não retribui (ritmado, whitelist) e achar alvos." />
           )}
-          {tab === "report" && (
-            <Placeholder title="Relatório" desc="Crescimento de seguidores no tempo, engajamento e top posts, melhor horário — tudo lido da tua sessão, nativo." />
-          )}
+          {tab === "report" && <Relatorio />}
           {tab === "clicks" && (
             <Placeholder title="Cliques" desc="Gerencia o tracker de links da bio (criar link + gráfico de cliques por dia). Fala com o worker direto — sem a trava CSP do Instagram." />
           )}
