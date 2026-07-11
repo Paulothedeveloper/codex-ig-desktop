@@ -45,3 +45,7 @@ body {
 ::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-thumb { background: #1c2636; border-radius: 8px; }
 ::selection { background: var(--color-teal); color: var(--color-void); }
+
+/* a11y: foco visível (WCAG 2.2) — teclado sempre enxerga onde está */
+:focus-visible { outline: 2px solid var(--color-teal); outline-offset: 2px; border-radius: 4px; }
+button, a, input, select { outline-color: var(--color-teal); }

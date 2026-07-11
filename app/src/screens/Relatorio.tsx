@@ -79,6 +79,13 @@ export default function Relatorio() {
   const avgCmt = n ? Math.round(posts!.reduce((a, p) => a + p.cmt, 0) / n) : 0;
   const eng = graph && graph.followers_count ? ((avgLike + avgCmt) / graph.followers_count) * 100 : 0;
   const top = posts ? [...posts].sort((a, b) => b.like + b.cmt - (a.like + a.cmt)) : [];
+  const bestHour = (() => {
+    if (!top.length) return null;
+    const hrs: Record<number, number> = {};
+    top.slice(0, 5).forEach((p) => { if (p.taken_at) { const h = new Date(p.taken_at * 1000).getHours(); hrs[h] = (hrs[h] || 0) + 1; } });
+    const e = Object.entries(hrs).sort((a, b) => b[1] - a[1])[0];
+    return e ? e[0] : null;
+  })();
 
   return (
     <div>
@@ -150,7 +157,7 @@ export default function Relatorio() {
           {posts && posts.length > 0 && (
             <div>
               <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)] mb-2">
-                Top posts (últimos {n}) · média {nf.format(avgLike)} curtidas · {nf.format(avgCmt)} coment.
+                Top posts (últimos {n}) · média {nf.format(avgLike)} curtidas · {nf.format(avgCmt)} coment.{bestHour ? ` · melhor horário ~${bestHour}h` : ""}
               </div>
               <div className="rounded-2xl border border-[var(--color-line)] bg-[#090d15] p-2">
                 {top.map((p, i) => (

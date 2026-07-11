@@ -154,7 +154,7 @@ export default function Limpar() {
                   {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} /></span>}
                   {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} /></span>}
                 </a>
-                <button onClick={(e) => { e.preventDefault(); toggleWl(u.pk); }} title="proteger" className="text-[#3a4557] hover:text-[#ffcf4d]"><Ic n="star" s={16} fill /></button>
+                <button onClick={(e) => { e.preventDefault(); toggleWl(u.pk); }} title="proteger" aria-label={`Proteger @${u.username} da limpeza`} className="text-[#3a4557] hover:text-[#ffcf4d]"><Ic n="star" s={16} fill /></button>
               </label>
             ))}
             {!list.length && <div className="text-[var(--color-slate)] text-[13px] p-2">Ninguém aqui.</div>}
