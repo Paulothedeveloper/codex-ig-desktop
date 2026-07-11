@@ -152,7 +152,7 @@ Expected: retorna ≥0 sem 401 (autenticou com a sessão). **PASSA** → Motor B
 
 ## FASE 4 — Cliques (tracker nativo)
 ### Task 4.1: Tela nativa do tracker
-**Files:** `app/src/screens/Cliques.tsx` · `app/src-tauri/src/tracker.rs` (fetch ao worker `SEU-WORKER.workers.dev`; chaves lidas do `keyring`, NÃO do front).
+**Files:** `app/src/screens/Cliques.tsx` · `app/src-tauri/src/tracker.rs` (fetch ao worker do tracker `<SEU-WORKER>.workers.dev`; chaves lidas do `keyring`, NÃO do front).
 **Deliverable:** criar link + ver gráfico de cliques dentro do app (origem nativa = sem CSP); chaves no keychain.
 
 ## FASE 5 — Config
