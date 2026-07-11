@@ -38,6 +38,10 @@ export default function Config() {
             <button onClick={check} className="text-[var(--color-teal)] font-bold underline">verificar de novo</button>.
           </div>
         )}
+        <div className="mt-3 flex gap-3">
+          <button onClick={() => invoke("focus_ig")} className="rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-paper)]">Abrir janela do Instagram</button>
+          {uid && <button onClick={check} className="rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-slate)]">Reverificar sessão</button>}
+        </div>
       </div>
 
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">

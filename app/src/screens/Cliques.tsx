@@ -66,10 +66,10 @@ export default function Cliques() {
       {(editing || !cfg.base) && (
         <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 space-y-3">
           <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">Conectar o tracker</div>
-          <input id="cf-base" defaultValue={cfg.base} placeholder="https://codex-ig-tracker.SEU.workers.dev" className="w-full bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+          <input id="cf-base" aria-label="URL do worker" defaultValue={cfg.base} placeholder="https://codex-ig-tracker.SEU.workers.dev" className="w-full bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
           <div className="grid grid-cols-2 gap-3">
-            <input id="cf-rk" defaultValue={cfg.rk} placeholder="READ_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
-            <input id="cf-wk" defaultValue={cfg.wk} placeholder="WRITE_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+            <input id="cf-rk" aria-label="Chave de leitura" defaultValue={cfg.rk} placeholder="READ_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+            <input id="cf-wk" aria-label="Chave de escrita" defaultValue={cfg.wk} placeholder="WRITE_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
           </div>
           <button onClick={saveCfg} className="rounded-xl px-4 py-2 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110">Conectar</button>
         </div>
@@ -85,8 +85,8 @@ export default function Cliques() {
           <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 space-y-3">
             <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">Criar link rastreado</div>
             <div className="grid grid-cols-[1fr_140px] gap-3">
-              <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="https://paulocodex.com" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
-              <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="bio" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+              <input value={dest} aria-label="Destino do link" onChange={(e) => setDest(e.target.value)} placeholder="https://paulocodex.com" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+              <input value={slug} aria-label="Slug do link" onChange={(e) => setSlug(e.target.value)} placeholder="bio" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
             </div>
             <button onClick={create} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110"><Ic n="link" s={16} />Criar link</button>
             {out && (

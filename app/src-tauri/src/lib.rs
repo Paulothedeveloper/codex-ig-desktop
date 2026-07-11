@@ -2,11 +2,37 @@
 // SQLite (tauri-plugin-sql) + comandos que usam o modulo ig_api (sessao do WebView -> API do IG).
 mod ig_api;
 use ig_api::{Post, Session};
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
 async fn sess(app: &tauri::AppHandle) -> Result<Session, String> {
     ig_api::session_from_webview(app).await
+}
+
+/// Abre a janela 'ig' (instagram.com) — o Paulo loga aqui; os comandos ig_* leem a sessão dela.
+fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(
+        app,
+        "ig",
+        WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
+    )
+    .title("Codex IG — Instagram (faça login aqui)")
+    .initialization_script("window.__CODEX_IG__=true;")
+    .inner_size(1040.0, 800.0)
+    .build()?;
+    Ok(())
+}
+
+/// Mostra/foca a janela do Instagram (recria se foi fechada).
+#[tauri::command]
+async fn focus_ig(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("ig") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        Ok(())
+    } else {
+        open_ig(&app).map_err(|e| e.to_string())
+    }
 }
 
 /// So confirma que a sessao do webview esta lida (devolve o uid).
@@ -104,16 +130,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // janela do Instagram (o Paulo loga aqui; os comandos ig_* leem a sessao dela)
-            WebviewWindowBuilder::new(
-                app,
-                "ig",
-                WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
-            )
-            .title("Codex IG — Instagram (faça login aqui)")
-            .initialization_script("window.__CODEX_IG__=true;")
-            .inner_size(1040.0, 800.0)
-            .build()?;
+            open_ig(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -121,7 +138,8 @@ pub fn run() {
             ig_graph,
             ig_feed,
             ig_destroy,
-            ig_targets
+            ig_targets,
+            focus_ig
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
