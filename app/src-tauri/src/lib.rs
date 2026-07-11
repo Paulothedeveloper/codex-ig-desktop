@@ -81,7 +81,8 @@ async fn ig_targets(
     let s = sess(&app).await?;
     let cap = cap.unwrap_or(300) as usize;
     let following = ig_api::friendships(&s, "following").await?;
-    let already: std::collections::HashSet<String> = following.iter().map(|u| u.pk.clone()).collect();
+    let already: std::collections::HashSet<String> =
+        following.iter().map(|u| u.pk.clone()).collect();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut agg: Vec<ig_api::IgUser> = Vec::new();
     for name in competitors {
@@ -123,6 +124,8 @@ pub fn run() {
     }];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             SqlBuilder::default()

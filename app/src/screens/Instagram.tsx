@@ -1,8 +1,10 @@
 import { useState } from "react";
 import Limpar from "./Limpar";
 import Alvos from "./Alvos";
+import { useI18n } from "../i18n";
 
 export default function Instagram() {
+  const { t } = useI18n();
   const [mode, setMode] = useState<"limpar" | "alvos">("limpar");
   return (
     <div className="space-y-4">
@@ -18,7 +20,7 @@ export default function Instagram() {
                 : "text-[var(--color-slate)] hover:text-[var(--color-paper)]")
             }
           >
-            {m === "limpar" ? "Limpar" : "Alvos"}
+            {m === "limpar" ? t("ig.clean") : t("ig.targets")}
           </button>
         ))}
       </div>
