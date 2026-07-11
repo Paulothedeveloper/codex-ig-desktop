@@ -38,7 +38,9 @@ pub struct Post {
 /// Le os cookies do webview "ig" e monta a Session (reencaminha o JAR INTEIRO —
 /// so ds_user_id+csrftoken = 401 require_login). `cookies()` = async (trava sincrono no Windows).
 pub async fn session_from_webview(app: &tauri::AppHandle) -> Result<Session, String> {
-    let wv = app.get_webview_window("ig").ok_or("webview 'ig' nao existe")?;
+    let wv = app
+        .get_webview_window("ig")
+        .ok_or("webview 'ig' nao existe")?;
     let cookies = wv.cookies().map_err(|e| format!("cookies(): {e}"))?;
     let (mut ds, mut csrf, mut jar) = (String::new(), String::new(), Vec::new());
     for c in &cookies {
@@ -93,10 +95,9 @@ fn parse_users(j: &serde_json::Value) -> Vec<IgUser> {
         .map(|a| {
             a.iter()
                 .map(|u| IgUser {
-                    pk: u["pk"]
-                        .as_str()
-                        .map(String::from)
-                        .unwrap_or_else(|| u["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()),
+                    pk: u["pk"].as_str().map(String::from).unwrap_or_else(|| {
+                        u["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()
+                    }),
                     username: u["username"].as_str().unwrap_or("").to_string(),
                     full: u["full_name"].as_str().unwrap_or("").to_string(),
                     is_private: u["is_private"].as_bool().unwrap_or(false),
@@ -135,7 +136,10 @@ pub async fn friendships(s: &Session, kind: &str) -> Result<Vec<IgUser>, String>
 
 /// Ultimos posts proprios (likes/coments/views publicos) pro Relatorio.
 pub async fn feed(s: &Session, count: u32) -> Result<Vec<Post>, String> {
-    let url = format!("https://www.instagram.com/api/v1/feed/user/{}/?count={count}", s.ds);
+    let url = format!(
+        "https://www.instagram.com/api/v1/feed/user/{}/?count={count}",
+        s.ds
+    );
     let j = get_json(s, &url).await?;
     Ok(j["items"]
         .as_array()
@@ -145,9 +149,17 @@ pub async fn feed(s: &Session, count: u32) -> Result<Vec<Post>, String> {
                     code: it["code"].as_str().unwrap_or("").to_string(),
                     like: it["like_count"].as_i64().unwrap_or(0),
                     cmt: it["comment_count"].as_i64().unwrap_or(0),
-                    views: it["play_count"].as_i64().or_else(|| it["view_count"].as_i64()).unwrap_or(0),
+                    views: it["play_count"]
+                        .as_i64()
+                        .or_else(|| it["view_count"].as_i64())
+                        .unwrap_or(0),
                     taken_at: it["taken_at"].as_i64().unwrap_or(0),
-                    caption: it["caption"]["text"].as_str().unwrap_or("").chars().take(120).collect(),
+                    caption: it["caption"]["text"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(120)
+                        .collect(),
                 })
                 .collect()
         })
@@ -172,7 +184,11 @@ pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUse
         let url = format!(
             "https://www.instagram.com/api/v1/friendships/{}/followers/?count=100{}",
             pk,
-            if next.is_empty() { String::new() } else { format!("&max_id={next}") }
+            if next.is_empty() {
+                String::new()
+            } else {
+                format!("&max_id={next}")
+            }
         );
         let j = get_json(s, &url).await?;
         out.extend(parse_users(&j));
@@ -188,7 +204,13 @@ pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUse
 
 fn urlencode(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c.to_string() } else { format!("%{:02X}", c as u32) })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "-_.".contains(c) {
+                c.to_string()
+            } else {
+                format!("%{:02X}", c as u32)
+            }
+        })
         .collect()
 }
 
