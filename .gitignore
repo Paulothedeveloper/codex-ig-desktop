@@ -16,3 +16,4 @@ secrets.*
 .DS_Store
 Thumbs.db
 .vscode/
+app/src-tauri/installer/*.png
