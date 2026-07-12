@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Ic } from "../icons";
 import { useI18n } from "../i18n";
+import { Select } from "../Select";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 const SEGS = ["editor", "dev", "biz", "ref"] as const;
@@ -42,13 +43,16 @@ export default function Alvos() {
           <input type="number" value={cap} min={50} max={2000} onChange={(e) => setCap(Math.max(50, +e.target.value))} className="mt-1 w-full bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-2 py-1.5 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
         </label>
         <label className="text-[11px] text-[var(--color-slate)] font-semibold">{t("targets.segment")}
-          <select value={seg} onChange={(e) => setSeg(e.target.value)} className="mt-1 w-full bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-2 py-1.5 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]">
-            {SEGS.map((k) => <option key={k} value={k}>{t("seg." + k)}</option>)}
-          </select>
+          <Select
+            value={seg}
+            onChange={setSeg}
+            ariaLabel={t("targets.segment")}
+            options={SEGS.map((k) => ({ value: k, label: t("seg." + k) }))}
+          />
         </label>
       </div>
 
-      <button onClick={search} disabled={loading} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
+      <button onClick={search} disabled={loading} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
         <Ic n="instagram" s={17} />{loading ? t("targets.searching") : t("targets.search")}
       </button>
 
@@ -69,11 +73,11 @@ export default function Alvos() {
           <div className="max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
             {found.slice(0, 400).map((u, i) => (
               <a key={u.pk} href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5">
-                <span className="w-6 text-[11px] text-[#4a5a6d] text-right">{i + 1}</span>
+                <span className="w-6 text-[11px] text-[var(--color-slate)] text-right">{i + 1}</span>
                 <span className="flex-1 min-w-0 truncate text-[13px]">@{u.username}{u.full ? <span className="text-[var(--color-slate)] text-[12px]"> · {u.full}</span> : null}</span>
-                {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} /></span>}
-                {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} /></span>}
-                <span className="text-[var(--color-steel)]"><Ic n="external" s={14} /></span>
+                {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} label={t("a11y.verified")} /></span>}
+                {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} label={t("a11y.private")} /></span>}
+                <span className="text-[var(--color-slate)]"><Ic n="external" s={14} /></span>
               </a>
             ))}
           </div>

@@ -12,7 +12,7 @@ export default function LanguageGate() {
         <div className="flex flex-col items-center gap-3">
           <Logo s={72} />
           <div>
-            <div className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-[#00e5c9] via-[#7ef7e6] to-[#00e5c9] bg-clip-text text-transparent">
+            <div className="text-2xl font-bold tracking-tight bg-gradient-to-r from-[#00e5c9] via-[#7ef7e6] to-[#00e5c9] bg-clip-text text-transparent">
               Codex IG
             </div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-slate)]">growth suite</div>

@@ -18,7 +18,9 @@ const ICON: Record<string, string> = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 13v6H5V6h6"/>',
 };
 
-export function Ic({ n, s = 18, fill = false }: { n: string; s?: number; fill?: boolean }) {
+// `label` → ícone com significado (role=img + aria-label pro leitor de tela);
+// sem label → decorativo (aria-hidden, não é anunciado). Regra do Manual (a11y).
+export function Ic({ n, s = 18, fill = false, label }: { n: string; s?: number; fill?: boolean; label?: string }) {
   return (
     <svg
       width={s}
@@ -29,6 +31,9 @@ export function Ic({ n, s = 18, fill = false }: { n: string; s?: number; fill?: 
       strokeWidth={1.9}
       strokeLinecap="round"
       strokeLinejoin="round"
+      role={label ? "img" : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
       style={{ display: "inline-block", verticalAlign: "-3px", flex: "0 0 auto" }}
       dangerouslySetInnerHTML={{ __html: ICON[n] || "" }}
     />

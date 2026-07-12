@@ -1,11 +1,34 @@
 // ig_api.rs — cliente da API web interna do Instagram usando a sessao do WebView2.
 // Leitura paginada + ritmada (anti-ban). Endpoints isolados aqui (IG muda sem avisar).
 use serde::Serialize;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::Manager;
 
 const APPID: &str = "936619743392459"; // x-ig-app-id publico
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+
+/// 1 Client reusavel (keep-alive + pool) com timeout — request sem timeout que pendura
+/// o socket travaria o comando inteiro; criar Client por request mata o keep-alive.
+fn client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(25))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .expect("reqwest client")
+    })
+}
+
+/// Jitter derivado do relogio — evita intervalo fixo (mais fingerprintavel) nas leituras.
+fn jitter_ms(base: u64) -> u64 {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    base + (n % (base / 2 + 1))
+}
 
 #[derive(Clone)]
 pub struct Session {
@@ -64,29 +87,48 @@ pub async fn session_from_webview(app: &tauri::AppHandle) -> Result<Session, Str
 }
 
 async fn get_json(s: &Session, url: &str) -> Result<serde_json::Value, String> {
-    let r = reqwest::Client::new()
-        .get(url)
-        .header("x-ig-app-id", APPID)
-        .header("x-csrftoken", &s.csrf)
-        .header("x-requested-with", "XMLHttpRequest")
-        .header("x-asbd-id", "129477")
-        .header("referer", "https://www.instagram.com/")
-        .header("sec-fetch-site", "same-origin")
-        .header("sec-fetch-mode", "cors")
-        .header("sec-fetch-dest", "empty")
-        .header("cookie", &s.cookie)
-        .header("user-agent", UA)
-        .send()
-        .await
-        .map_err(|e| format!("req: {e}"))?;
-    let st = r.status();
-    if st.as_u16() == 429 {
-        return Err("429".into()); // rate-limit -> chamador para/back-off
+    let mut attempt: u64 = 0;
+    loop {
+        let res = client()
+            .get(url)
+            .header("x-ig-app-id", APPID)
+            .header("x-csrftoken", &s.csrf)
+            .header("x-requested-with", "XMLHttpRequest")
+            .header("x-asbd-id", "129477")
+            .header("referer", "https://www.instagram.com/")
+            .header("sec-fetch-site", "same-origin")
+            .header("sec-fetch-mode", "cors")
+            .header("sec-fetch-dest", "empty")
+            .header("cookie", &s.cookie)
+            .header("user-agent", UA)
+            .send()
+            .await;
+        match res {
+            Ok(r) => {
+                let st = r.status();
+                if st.as_u16() == 429 {
+                    attempt += 1;
+                    if attempt >= 3 {
+                        return Err("429".into()); // rate-limit persistente -> chamador para
+                    }
+                    tokio::time::sleep(Duration::from_secs(2 * attempt)).await; // backoff 2s,4s
+                    continue;
+                }
+                if !st.is_success() {
+                    return Err(format!("HTTP {st}"));
+                }
+                return r.json().await.map_err(|e| format!("json: {e}"));
+            }
+            Err(e) => {
+                // timeout/conexao — 1 retry curto antes de desistir
+                attempt += 1;
+                if attempt >= 3 {
+                    return Err(format!("req: {e}"));
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
     }
-    if !st.is_success() {
-        return Err(format!("HTTP {st}"));
-    }
-    r.json().await.map_err(|e| format!("json: {e}"))
 }
 
 fn parse_users(j: &serde_json::Value) -> Vec<IgUser> {
@@ -129,7 +171,7 @@ pub async fn friendships(s: &Session, kind: &str) -> Result<Vec<IgUser>, String>
         if next.is_empty() {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(600)).await; // ritmo anti-ban
+        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await; // ritmo anti-ban + jitter
     }
     Ok(out)
 }
@@ -196,7 +238,7 @@ pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUse
         if next.is_empty() || out.len() >= cap {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(700)).await;
+        tokio::time::sleep(Duration::from_millis(jitter_ms(700))).await;
     }
     out.truncate(cap);
     Ok(out)
@@ -216,8 +258,12 @@ fn urlencode(s: &str) -> String {
 
 /// Unfollow (escrita — o chamador ritma/whitelista/para no BLOCK).
 pub async fn destroy(s: &Session, pk: &str) -> Result<(), String> {
+    // pk vem do front (do usuario), mas validar antes de injetar na URL (input no comando Rust)
+    if pk.is_empty() || !pk.chars().all(|c| c.is_ascii_digit()) {
+        return Err("pk invalido".into());
+    }
     let url = format!("https://www.instagram.com/api/v1/friendships/destroy/{pk}/");
-    let r = reqwest::Client::new()
+    let r = client()
         .post(&url)
         .header("x-ig-app-id", APPID)
         .header("x-csrftoken", &s.csrf)

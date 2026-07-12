@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Codex IG",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.paulocodex.codexig",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -16,7 +16,8 @@
         "width": 1180,
         "height": 760,
         "minWidth": 940,
-        "minHeight": 620
+        "minHeight": 620,
+        "additionalBrowserArgs": "--disable-features=CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-gpu-shader-disk-cache"
       }
     ],
     "security": {
