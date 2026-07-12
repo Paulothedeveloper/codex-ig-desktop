@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n, LANGS, type Lang } from "../i18n";
+import { useConfirm } from "../Confirm";
 
 const WL_KEY = "codexig_whitelist";
 
 export default function Config() {
   const { t, lang, setLang } = useI18n();
+  const confirm = useConfirm();
   const [uid, setUid] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [wl, setWl] = useState<string[]>(JSON.parse(localStorage.getItem(WL_KEY) || "[]"));
@@ -16,8 +18,8 @@ export default function Config() {
   }
   useEffect(() => { check(); }, []);
 
-  function clearWl() {
-    if (!confirm(t("config.clearWlConfirm"))) return;
+  async function clearWl() {
+    if (!(await confirm({ body: t("config.clearWlConfirm"), danger: true }))) return;
     localStorage.setItem(WL_KEY, "[]"); setWl([]);
   }
   function exportWl() {
