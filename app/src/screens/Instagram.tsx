@@ -24,7 +24,9 @@ export default function Instagram() {
           </button>
         ))}
       </div>
-      {mode === "limpar" ? <Limpar /> : <Alvos />}
+      {/* ambas montadas (só escondidas) — alternar Limpar/Alvos não perde estado nem para a limpeza */}
+      <div className={mode === "limpar" ? "" : "hidden"}><Limpar /></div>
+      <div className={mode === "alvos" ? "" : "hidden"}><Alvos /></div>
     </div>
   );
 }

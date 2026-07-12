@@ -161,6 +161,8 @@ const PT: Dict = {
   "update.prompt": "Nova versão {v} disponível. Atualizar agora?",
   "a11y.verified": "verificado",
   "a11y.private": "privado",
+  "confirm.ok": "Confirmar",
+  "confirm.cancel": "Cancelar",
 
   "ig.clean": "Limpar",
   "ig.targets": "Alvos",
@@ -316,6 +318,8 @@ const EN: Dict = {
   "update.prompt": "New version {v} available. Update now?",
   "a11y.verified": "verified",
   "a11y.private": "private",
+  "confirm.ok": "Confirm",
+  "confirm.cancel": "Cancel",
 
   "ig.clean": "Clean up",
   "ig.targets": "Targets",
@@ -471,6 +475,8 @@ const ES: Dict = {
   "update.prompt": "Nueva versión {v} disponible. ¿Actualizar ahora?",
   "a11y.verified": "verificado",
   "a11y.private": "privado",
+  "confirm.ok": "Confirmar",
+  "confirm.cancel": "Cancelar",
 
   "ig.clean": "Limpiar",
   "ig.targets": "Objetivos",
@@ -626,6 +632,8 @@ const FR: Dict = {
   "update.prompt": "Nouvelle version {v} disponible. Mettre à jour maintenant ?",
   "a11y.verified": "vérifié",
   "a11y.private": "privé",
+  "confirm.ok": "Confirmer",
+  "confirm.cancel": "Annuler",
 
   "ig.clean": "Nettoyer",
   "ig.targets": "Cibles",
@@ -781,6 +789,8 @@ const DE: Dict = {
   "update.prompt": "Neue Version {v} verfügbar. Jetzt aktualisieren?",
   "a11y.verified": "verifiziert",
   "a11y.private": "privat",
+  "confirm.ok": "Bestätigen",
+  "confirm.cancel": "Abbrechen",
 
   "ig.clean": "Aufräumen",
   "ig.targets": "Ziele",

@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Ic } from "../icons";
 import { useI18n } from "../i18n";
+import { useConfirm } from "../Confirm";
 import { ensureAccount, logUnfollow } from "../db";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
@@ -26,6 +27,7 @@ function risk(delay: number, cap: number, batch: number, pause: number) {
 
 export default function Limpar() {
   const { t, nf } = useI18n();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -76,7 +78,7 @@ export default function Limpar() {
     if (running) { stopRef.current = true; return; } // PARAR: ref lido dentro do loop
     const marked = list.filter((u) => sel.has(u.pk)).slice(0, Math.max(1, cap));
     if (!marked.length) { addLog("info", t("clean.nothingMarked")); return; }
-    if (!confirm(t("clean.confirm", { n: marked.length, d: delay, p: pause, b: batch }))) return;
+    if (!(await confirm({ body: t("clean.confirm", { n: marked.length, d: delay, p: pause, b: batch }), danger: true }))) return;
     setRunning(true); stopRef.current = false; setProg(0); setLog([]);
 
     // conta pra trilha de auditoria local (unfollow_log); se falhar, segue sem log

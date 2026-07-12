@@ -116,11 +116,13 @@ export default function App() {
           <p className="text-[13px] text-[var(--color-slate)]">{active.sub}</p>
         </header>
 
+        {/* telas ficam MONTADAS (só escondidas) — trocar de aba não desmonta:
+            preserva o estado carregado e mantém o loop de unfollow rodando em 2º plano. */}
         <div className="p-7 max-w-4xl">
-          {tab === "instagram" && <Instagram />}
-          {tab === "report" && <Relatorio />}
-          {tab === "clicks" && <Cliques />}
-          {tab === "config" && <Config />}
+          <div className={tab === "instagram" ? "" : "hidden"}><Instagram /></div>
+          <div className={tab === "report" ? "" : "hidden"}><Relatorio /></div>
+          <div className={tab === "clicks" ? "" : "hidden"}><Cliques /></div>
+          <div className={tab === "config" ? "" : "hidden"}><Config /></div>
         </div>
       </main>
 
