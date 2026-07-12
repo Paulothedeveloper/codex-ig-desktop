@@ -6,6 +6,7 @@
 </p>
 
 <p align="center">
+  <img alt="status" src="https://img.shields.io/badge/status-GRÁTIS-00E5C9?style=flat&labelColor=0b0e17">
   <img alt="tauri" src="https://img.shields.io/badge/Tauri-2-00e5c9?style=flat&labelColor=0b0e17">
   <img alt="rust" src="https://img.shields.io/badge/Rust-1.95-ff4d3d?style=flat&labelColor=0b0e17">
   <img alt="local" src="https://img.shields.io/badge/100%25-local-8892a0?style=flat&labelColor=0b0e17">
@@ -56,10 +57,22 @@ Desktop **growth / report / link-click** app for **your own** Instagram — runs
 
 **Run (dev):** `cd app && npm install && npm run tauri dev`
 
+## Sobre o desenvolvedor
+
+<img src="docs/paulo.jpg" alt="Paulo" width="120" align="left" style="margin-right:16px;border-radius:12px" />
+
+**Paulo** é desenvolvedor indie e produtor de vídeo brasileiro (estúdio [Paulocodex](https://paulocodex.com)). O Codex IG começou como um kit no console do navegador pra organizar o próprio Instagram e virou um app desktop nativo, aberto e local-first — roda na sessão real do usuário, sem servidor. Desenvolve de forma aberta e ouve quem usa.
+
+<br clear="left" />
+
 ## Licença / License
 
 [MIT](LICENSE) — © 2026 Paulo Batista (Paulocodex). Software "as is", sem garantia.
 
 ---
 
-<p align="center"><sub>Feito no estúdio <a href="https://paulocodex.com">Paulocodex</a> · <a href="mailto:contato@paulocodex.com">contato@paulocodex.com</a></sub></p>
+<div align="center">
+
+📧 [contato@paulocodex.com](mailto:contato@paulocodex.com) · 📸 [Instagram](https://instagram.com/paulodev.codex) · 💼 [LinkedIn](https://www.linkedin.com/in/paulo-adriel/) · 🐙 [github.com/Paulothedeveloper](https://github.com/Paulothedeveloper)
+
+</div>
