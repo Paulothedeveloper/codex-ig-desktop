@@ -70,7 +70,7 @@ export default function Cliques() {
             <input id="cf-rk" aria-label={t("clicks.readAria")} defaultValue={cfg.rk} placeholder="READ_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
             <input id="cf-wk" aria-label={t("clicks.writeAria")} defaultValue={cfg.wk} placeholder="WRITE_KEY" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
           </div>
-          <button onClick={saveCfg} className="rounded-xl px-4 py-2 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110">{t("clicks.connectBtn")}</button>
+          <button onClick={saveCfg} className="rounded-xl px-4 py-2 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110">{t("clicks.connectBtn")}</button>
         </div>
       )}
 
@@ -87,7 +87,7 @@ export default function Cliques() {
               <input value={dest} aria-label={t("clicks.destAria")} onChange={(e) => setDest(e.target.value)} placeholder="https://paulocodex.com" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
               <input value={slug} aria-label={t("clicks.slugAria")} onChange={(e) => setSlug(e.target.value)} placeholder="bio" className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
             </div>
-            <button onClick={create} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110"><Ic n="link" s={16} />{t("clicks.createBtn")}</button>
+            <button onClick={create} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110"><Ic n="link" s={16} />{t("clicks.createBtn")}</button>
             {out && (
               <div>
                 <div className="bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-3 py-2 font-mono text-[12px] text-[var(--color-teal2)] break-all">{out}</div>
@@ -105,7 +105,7 @@ export default function Cliques() {
             {links && links.length === 0 && <div className="text-[13px] text-[var(--color-slate)]">{t("clicks.noLinks")}</div>}
             {links && links.map((l) => (
               <div key={l.slug} className="mb-3">
-                <div className="flex justify-between text-[13px]"><b>/l/{l.slug}</b><span className="text-[var(--color-teal)] font-extrabold">{nf(l.clicks)}</span></div>
+                <div className="flex justify-between text-[13px]"><b>/l/{l.slug}</b><span className="text-[var(--color-teal)] font-bold">{nf(l.clicks)}</span></div>
                 <div className="h-2 rounded bg-[#0a0f18] mt-1 overflow-hidden"><div style={{ width: (l.clicks / max) * 100 + "%" }} className="h-full bg-[linear-gradient(90deg,#00e5c9,#7ef7e6)]" /></div>
               </div>
             ))}

@@ -29,7 +29,7 @@ type Post = { code: string; like: number; cmt: number; views: number; taken_at: 
 function Stat({ v, label, coral }: { v: string | number; label: string; coral?: boolean }) {
   return (
     <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-      <div className={"text-3xl font-extrabold tracking-tight " + (coral ? "text-[var(--color-coral2)]" : "text-[var(--color-teal)]")}>{v}</div>
+      <div className={"text-3xl font-bold tracking-tight " + (coral ? "text-[var(--color-coral2)]" : "text-[var(--color-teal)]")}>{v}</div>
       <div className="mt-1 text-[11px] text-[var(--color-slate)]">{label}</div>
     </div>
   );
@@ -97,7 +97,7 @@ export default function Relatorio() {
           </p>
           <button
             onClick={load}
-            className="mt-4 rounded-xl px-5 py-2.5 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 active:scale-[.99]"
+            className="mt-4 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 active:scale-[.99]"
           >
             {t("report.load")}
           </button>
@@ -167,7 +167,7 @@ export default function Relatorio() {
                     rel="noreferrer"
                     className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/5"
                   >
-                    <span className="w-5 text-[12px] font-bold text-[#4a5a6d]">{i + 1}</span>
+                    <span className="w-5 text-[12px] font-bold text-[var(--color-slate)]">{i + 1}</span>
                     <span className="flex-1 min-w-0 truncate text-[13px]">{p.caption || t("report.noCaption")}</span>
                     <span className="text-[12px] font-bold text-[var(--color-coral2)]">{nf(p.like)}</span>
                     <span className="text-[11px] text-[var(--color-slate)]">{nf(p.cmt)} c</span>

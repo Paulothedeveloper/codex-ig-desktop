@@ -96,7 +96,7 @@ const PT: Dict = {
   "clean.pauseTick": "pausa {s}s…",
   "clean.done": "Fim: {n} deixados de seguir.",
 
-  "targets.intro": "Concorrentes/referências do teu nicho (sem @, separados por vírgula) → devolve os seguidores deles (teu público), tirando quem você já segue. Você abre, curte 2-3 e comenta o modelo. Não interage por você (curtir/comentar em massa por script é o que bane).",
+  "targets.intro": "Concorrentes/referências do teu nicho (sem @, separados por vírgula) — devolve os seguidores deles (teu público), tirando quem você já segue. Você abre, curte 2-3 e comenta o modelo. Não interage por você (curtir/comentar em massa por script é o que bane).",
   "targets.placeholder": "ex: davinciresolve.br, editor.pro",
   "targets.sample": "Amostra/conta",
   "targets.segment": "Segmento",
@@ -159,6 +159,8 @@ const PT: Dict = {
   "config.privacyBody": "Tudo roda local, na tua sessão. Os cookies do Instagram são lidos em tempo de execução e nunca gravados por nós. Dados ficam no teu aparelho (SQLite). As chaves do tracker ficam no navegador do app. Sem servidor de terceiro, sem PII.",
   "config.language": "Idioma",
   "update.prompt": "Nova versão {v} disponível. Atualizar agora?",
+  "a11y.verified": "verificado",
+  "a11y.private": "privado",
 
   "ig.clean": "Limpar",
   "ig.targets": "Alvos",
@@ -249,7 +251,7 @@ const EN: Dict = {
   "clean.pauseTick": "pause {s}s…",
   "clean.done": "Done: {n} unfollowed.",
 
-  "targets.intro": "Competitors/references in your niche (no @, comma-separated) → returns their followers (your audience), minus who you already follow. You open, like 2-3 and comment the template. It doesn't interact for you (mass liking/commenting by script is what gets you banned).",
+  "targets.intro": "Competitors/references in your niche (no @, comma-separated) — returns their followers (your audience), minus who you already follow. You open, like 2-3 and comment the template. It doesn't interact for you (mass liking/commenting by script is what gets you banned).",
   "targets.placeholder": "e.g. davinciresolve.br, editor.pro",
   "targets.sample": "Sample/account",
   "targets.segment": "Segment",
@@ -312,6 +314,8 @@ const EN: Dict = {
   "config.privacyBody": "Everything runs local, in your session. Instagram cookies are read at runtime and never stored by us. Data stays on your device (SQLite). Tracker keys stay in the app's browser. No third-party server, no PII.",
   "config.language": "Language",
   "update.prompt": "New version {v} available. Update now?",
+  "a11y.verified": "verified",
+  "a11y.private": "private",
 
   "ig.clean": "Clean up",
   "ig.targets": "Targets",
@@ -402,7 +406,7 @@ const ES: Dict = {
   "clean.pauseTick": "pausa {s}s…",
   "clean.done": "Fin: {n} dejados de seguir.",
 
-  "targets.intro": "Competidores/referencias de tu nicho (sin @, separados por comas) → devuelve sus seguidores (tu público), quitando a quien ya sigues. Tú abres, das 2-3 me gusta y comentas el modelo. No interactúa por ti (dar me gusta/comentar en masa por script es lo que banea).",
+  "targets.intro": "Competidores/referencias de tu nicho (sin @, separados por comas) — devuelve sus seguidores (tu público), quitando a quien ya sigues. Tú abres, das 2-3 me gusta y comentas el modelo. No interactúa por ti (dar me gusta/comentar en masa por script es lo que banea).",
   "targets.placeholder": "ej: davinciresolve.br, editor.pro",
   "targets.sample": "Muestra/cuenta",
   "targets.segment": "Segmento",
@@ -465,6 +469,8 @@ const ES: Dict = {
   "config.privacyBody": "Todo corre local, en tu sesión. Las cookies de Instagram se leen en tiempo de ejecución y nunca las guardamos. Los datos quedan en tu dispositivo (SQLite). Las claves del tracker quedan en el navegador de la app. Sin servidor de terceros, sin PII.",
   "config.language": "Idioma",
   "update.prompt": "Nueva versión {v} disponible. ¿Actualizar ahora?",
+  "a11y.verified": "verificado",
+  "a11y.private": "privado",
 
   "ig.clean": "Limpiar",
   "ig.targets": "Objetivos",
@@ -555,7 +561,7 @@ const FR: Dict = {
   "clean.pauseTick": "pause {s}s…",
   "clean.done": "Fin : {n} désabonnements.",
 
-  "targets.intro": "Concurrents/références de ta niche (sans @, séparés par des virgules) → renvoie leurs abonnés (ton public), en retirant ceux que tu suis déjà. Tu ouvres, aimes 2-3 et commentes le modèle. Il n'interagit pas à ta place (aimer/commenter en masse par script, c'est ce qui bannit).",
+  "targets.intro": "Concurrents/références de ta niche (sans @, séparés par des virgules) — renvoie leurs abonnés (ton public), en retirant ceux que tu suis déjà. Tu ouvres, aimes 2-3 et commentes le modèle. Il n'interagit pas à ta place (aimer/commenter en masse par script, c'est ce qui bannit).",
   "targets.placeholder": "ex : davinciresolve.br, editor.pro",
   "targets.sample": "Échantillon/compte",
   "targets.segment": "Segment",
@@ -618,6 +624,8 @@ const FR: Dict = {
   "config.privacyBody": "Tout tourne en local, dans ta session. Les cookies Instagram sont lus à l'exécution et jamais stockés par nous. Les données restent sur ton appareil (SQLite). Les clés du tracker restent dans le navigateur de l'app. Aucun serveur tiers, aucune PII.",
   "config.language": "Langue",
   "update.prompt": "Nouvelle version {v} disponible. Mettre à jour maintenant ?",
+  "a11y.verified": "vérifié",
+  "a11y.private": "privé",
 
   "ig.clean": "Nettoyer",
   "ig.targets": "Cibles",
@@ -708,7 +716,7 @@ const DE: Dict = {
   "clean.pauseTick": "Pause {s}s…",
   "clean.done": "Fertig: {n} entfolgt.",
 
-  "targets.intro": "Wettbewerber/Referenzen deiner Nische (ohne @, kommagetrennt) → gibt deren Follower (dein Publikum) zurück, ohne die, denen du schon folgst. Du öffnest, likest 2-3 und kommentierst die Vorlage. Es interagiert nicht für dich (Massen-Likes/-Kommentare per Skript führen zur Sperre).",
+  "targets.intro": "Wettbewerber/Referenzen deiner Nische (ohne @, kommagetrennt) — gibt deren Follower (dein Publikum) zurück, ohne die, denen du schon folgst. Du öffnest, likest 2-3 und kommentierst die Vorlage. Es interagiert nicht für dich (Massen-Likes/-Kommentare per Skript führen zur Sperre).",
   "targets.placeholder": "z. B. davinciresolve.br, editor.pro",
   "targets.sample": "Stichprobe/Konto",
   "targets.segment": "Segment",
@@ -771,6 +779,8 @@ const DE: Dict = {
   "config.privacyBody": "Alles läuft lokal, in deiner Sitzung. Instagram-Cookies werden zur Laufzeit gelesen und von uns nie gespeichert. Daten bleiben auf deinem Gerät (SQLite). Tracker-Schlüssel bleiben im Browser der App. Kein Drittserver, keine PII.",
   "config.language": "Sprache",
   "update.prompt": "Neue Version {v} verfügbar. Jetzt aktualisieren?",
+  "a11y.verified": "verifiziert",
+  "a11y.private": "privat",
 
   "ig.clean": "Aufräumen",
   "ig.targets": "Ziele",

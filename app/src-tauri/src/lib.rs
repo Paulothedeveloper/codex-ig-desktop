@@ -9,17 +9,25 @@ async fn sess(app: &tauri::AppHandle) -> Result<Session, String> {
     ig_api::session_from_webview(app).await
 }
 
+// Args do WebView2/Chromium (Windows): evita tela branca/preta ao minimizar (occlusion +
+// GPUCache) e impede o throttle de timers quando minimizado — o loop de unfollow roda no
+// renderer e travaria se a janela fosse pra segundo plano. Regra do Manual (tela-branca + anti-standby).
+#[cfg(windows)]
+const WV_ARGS: &str = "--disable-features=CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-gpu-shader-disk-cache";
+
 /// Abre a janela 'ig' (instagram.com) — o Paulo loga aqui; os comandos ig_* leem a sessão dela.
 fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
-    WebviewWindowBuilder::new(
+    let b = WebviewWindowBuilder::new(
         app,
         "ig",
         WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
     )
     .title("Codex IG — Instagram (faça login aqui)")
     .initialization_script("window.__CODEX_IG__=true;")
-    .inner_size(1040.0, 800.0)
-    .build()?;
+    .inner_size(1040.0, 800.0);
+    #[cfg(windows)]
+    let b = b.additional_browser_args(WV_ARGS);
+    b.build()?;
     Ok(())
 }
 
@@ -123,15 +131,21 @@ pub fn run() {
         kind: MigrationKind::Up,
     }];
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
             SqlBuilder::default()
                 .add_migrations("sqlite:codexig.db", migrations)
                 .build(),
-        )
+        );
+    // updater + process sao crates desktop-only (gated no Cargo.toml) — registrar so no desktop,
+    // senao um build android/ios nao compila (referencia a crate ausente).
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .setup(|app| {
             open_ig(app.handle())?;
             Ok(())

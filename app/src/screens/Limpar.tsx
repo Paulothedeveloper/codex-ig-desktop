@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Ic } from "../icons";
 import { useI18n } from "../i18n";
+import { ensureAccount, logUnfollow } from "../db";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Graph = { following_count: number; followers_count: number; non_followers: IgUser[] };
@@ -36,7 +37,7 @@ export default function Limpar() {
   const [batch, setBatch] = useState(50);
   const [pause, setPause] = useState(120);
   const [running, setRunning] = useState(false);
-  const [stopReq, setStopReq] = useState(false);
+  const stopRef = useRef(false); // lido DENTRO do loop async (setState não atualiza a closure em execução)
   const [prog, setProg] = useState(0);
   const [log, setLog] = useState<{ k: "ok" | "warn" | "info"; t: string }[]>([]);
 
@@ -72,36 +73,44 @@ export default function Limpar() {
   }
 
   async function run() {
-    if (running) { setStopReq(true); return; }
+    if (running) { stopRef.current = true; return; } // PARAR: ref lido dentro do loop
     const marked = list.filter((u) => sel.has(u.pk)).slice(0, Math.max(1, cap));
     if (!marked.length) { addLog("info", t("clean.nothingMarked")); return; }
     if (!confirm(t("clean.confirm", { n: marked.length, d: delay, p: pause, b: batch }))) return;
-    setRunning(true); setStopReq(false); setProg(0); setLog([]);
+    setRunning(true); stopRef.current = false; setProg(0); setLog([]);
+
+    // conta pra trilha de auditoria local (unfollow_log); se falhar, segue sem log
+    let accountId: number | null = null;
+    try { accountId = await ensureAccount(await invoke<string>("ig_session_ok")); } catch { /* sem log */ }
+
+    const removed = new Set<string>(); // só os REALMENTE deixados de seguir
     let stop = false;
     let ok = 0;
     for (let i = 0; i < marked.length; i++) {
-      if (stopReq || stop) break;
+      if (stopRef.current || stop) break;
       const u = marked[i];
       try {
         await invoke("ig_destroy", { pk: u.pk });
-        ok++;
+        ok++; removed.add(u.pk);
         addLog("ok", `@${u.username} (${ok}/${marked.length})`);
+        if (accountId != null) logUnfollow(accountId, u.pk, u.username, "ok").catch(() => {});
       } catch (e) {
         const msg = String(e);
+        if (accountId != null) logUnfollow(accountId, u.pk, u.username, msg.slice(0, 80)).catch(() => {});
         if (msg.includes("BLOCK")) { addLog("warn", t("clean.blocked", { m: msg })); stop = true; break; }
         addLog("warn", `@${u.username}: ${msg}`);
       }
       setProg(((i + 1) / marked.length) * 100);
       if (ok > 0 && ok % batch === 0 && i < marked.length - 1) {
-        for (let s = pause; s > 0 && !stopReq; s--) { addLog("info", t("clean.pauseTick", { s })); await sleep(1000); }
+        for (let s = pause; s > 0 && !stopRef.current; s--) { addLog("info", t("clean.pauseTick", { s })); await sleep(1000); }
       } else {
         await sleep(jitter(delay * 1000));
       }
     }
     addLog("info", t("clean.done", { n: ok }));
-    setRunning(false); setStopReq(false);
-    // remove os que sairam da lista
-    if (graph) setGraph({ ...graph, non_followers: graph.non_followers.filter((u) => !(sel.has(u.pk) && ok > 0)) });
+    setRunning(false); stopRef.current = false;
+    // remove da lista SÓ quem foi realmente deixado de seguir (não os que deram erro/não alcançados)
+    if (graph && removed.size) setGraph({ ...graph, non_followers: graph.non_followers.filter((u) => !removed.has(u.pk)) });
   }
 
   return (
@@ -111,7 +120,7 @@ export default function Limpar() {
           <p className="text-[var(--color-slate)] text-sm max-w-md mx-auto">
             {t("clean.login", { win: t("win.name") })}
           </p>
-          <button onClick={load} disabled={loading} className="mt-4 rounded-xl px-5 py-2.5 font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
+          <button onClick={load} disabled={loading} className="mt-4 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
             {loading ? t("clean.loading") : t("clean.loadBtn")}
           </button>
           {err && <div className="mt-3 text-[13px] text-[var(--color-coral2)]">{t("clean.failed", { e: err })}</div>}
@@ -153,10 +162,10 @@ export default function Limpar() {
                 <input type="checkbox" checked={sel.has(u.pk)} onChange={() => toggleSel(u.pk)} className="accent-[var(--color-teal)]" />
                 <a href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[13px] hover:text-[var(--color-teal)] inline-flex items-center gap-1">
                   <span className="truncate">@{u.username}</span>
-                  {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} /></span>}
-                  {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} /></span>}
+                  {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} label={t("a11y.verified")} /></span>}
+                  {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} label={t("a11y.private")} /></span>}
                 </a>
-                <button onClick={(e) => { e.preventDefault(); toggleWl(u.pk); }} title={t("clean.protectTitle")} aria-label={t("clean.protectAria", { u: u.username })} className="text-[#3a4557] hover:text-[#ffcf4d]"><Ic n="star" s={16} fill /></button>
+                <button onClick={(e) => { e.preventDefault(); toggleWl(u.pk); }} title={t("clean.protectTitle")} aria-label={t("clean.protectAria", { u: u.username })} className="text-[#5f6f82] hover:text-[#ffcf4d]"><Ic n="star" s={16} fill /></button>
               </label>
             ))}
             {!list.length && <div className="text-[var(--color-slate)] text-[13px] p-2">{t("clean.empty")}</div>}
@@ -164,7 +173,7 @@ export default function Limpar() {
 
           {running && <div className="h-2 rounded bg-[#141d29] overflow-hidden"><div style={{ width: prog + "%" }} className="h-full bg-[linear-gradient(90deg,#00e5c9,#7ef7e6)] transition-all" /></div>}
 
-          <button onClick={run} className={"w-full rounded-xl py-3 font-extrabold " + (running ? "bg-[linear-gradient(135deg,#ff4d3d,#e0392b)] text-white" : "bg-[linear-gradient(135deg,#ff4d3d,#e0392b)] text-white hover:brightness-110")}>
+          <button onClick={run} className={"w-full rounded-xl py-3 font-bold " + (running ? "bg-[linear-gradient(135deg,#ff4d3d,#e0392b)] text-white" : "bg-[linear-gradient(135deg,#ff4d3d,#e0392b)] text-white hover:brightness-110")}>
             {running ? t("clean.stop") : t("clean.run")}
           </button>
 

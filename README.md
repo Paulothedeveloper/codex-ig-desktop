@@ -42,8 +42,24 @@ npm install
 npm run tauri dev
 ```
 
-Design e plano em [`docs/superpowers/`](docs/superpowers/). Marca em [`brand/`](brand/).
+Design e plano em [`docs/superpowers/`](docs/superpowers/). Marca em [`brand/`](brand/). App em **5 idiomas** (PT/EN/ES/FR/DE) com tela de escolha na 1ª abertura.
+
+## Aviso / Disclaimer
+
+Ferramenta de automação do **seu próprio** Instagram. Pode contrariar os Termos do Instagram e há risco de bloqueio temporário — **uso por sua conta e risco**, sem garantia. Detalhes em [`DISCLAIMER.md`](DISCLAIMER.md).
 
 ---
 
-<p align="center"><sub>Feito no estúdio <a href="https://paulocodex.com">Paulocodex</a> · uso pessoal</sub></p>
+## In English
+
+Desktop **growth / report / link-click** app for **your own** Instagram — runs on **your real session**, 100% local, no login-bot, no store. It opens instagram.com (you log in normally) and reads that session to show native screens: **Instagram** (unfollow non-followers at your pace, with whitelist + auto-stop; and competitor-followers targeting), **Report** (following/followers/non-mutuals, engagement, top posts, follower-growth over time via local SQLite), **Clicks** (bio-link tracker on your own Cloudflare worker) and **Settings** (account, whitelist, language). Everything local — Instagram cookies read at runtime, **never stored**, no third-party server, no PII. 5 languages (PT/EN/ES/FR/DE). **Use at your own risk** (may conflict with Instagram's Terms; see [`DISCLAIMER.md`](DISCLAIMER.md)).
+
+**Run (dev):** `cd app && npm install && npm run tauri dev`
+
+## Licença / License
+
+[MIT](LICENSE) — © 2026 Paulo Batista (Paulocodex). Software "as is", sem garantia.
+
+---
+
+<p align="center"><sub>Feito no estúdio <a href="https://paulocodex.com">Paulocodex</a> · <a href="mailto:contato@paulocodex.com">contato@paulocodex.com</a></sub></p>

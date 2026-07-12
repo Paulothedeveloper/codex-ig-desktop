@@ -27,6 +27,15 @@ export async function saveSnapshot(accountId: number, followingCount: number, fo
   }
 }
 
+// auditoria da ação de escrita (unfollow) — trilha local do que foi feito e o resultado
+export async function logUnfollow(accountId: number, pk: string, username: string, result: string) {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO unfollow_log (account_id, pk, username, ts, result) VALUES (?,?,?,?,?)",
+    [accountId, pk, username, Date.now(), result],
+  );
+}
+
 export async function growthSeries(accountId: number): Promise<{ ts: number; followers: number }[]> {
   const db = await getDb();
   const rows = await db.select<{ ts: number; followers_count: number }[]>("SELECT ts, followers_count FROM snapshot WHERE account_id = ? ORDER BY ts ASC", [accountId]);

@@ -19,9 +19,10 @@ Shell: sidebar 240px (logo orbit + wordmark gradiente + 4 abas com ícone SVG + 
 
 ## Regras aplicadas (Manual)
 - **ZERO emoji em UI** → tudo SVG (`app/src/icons.tsx`, dicionário `ICON` + `<Ic>`). Provado por varredura regex no DOM = `[]`.
-- **a11y WCAG:** `:focus-visible` outline teal, `aria-label` em botões só-ícone e inputs. *(Falta: medir contraste/foco com leitor de tela + tamanho de alvo ≥44px — pendente.)*
-- **Layout medido** (chromium 1180×760): 0 colisão, 0 overflow nas 4 abas.
+- **a11y WCAG:** `:focus-visible` outline teal, `aria-label` em botões só-ícone e inputs, `role=img`+label nos ícones com significado (badge/lock) e `aria-hidden` nos decorativos. Contraste corrigido p/ AA (números de ranking e affordances subidos de ~2.7:1 pra ≥4.5:1). *(Falta: tamanho de alvo ≥44px em alguns controles pequenos.)*
+- **i18n 5 idiomas** (PT/EN/ES/FR/DE) com tela de escolha na 1ª abertura + trocador no Config; dropdown custom no lugar de `<select>` nativo (regra do Manual).
+- **Layout medido** (chromium 1180×760 e 940×620): 0 colisão, 0 overflow, 0 erro de console, 0 emoji nas 4 abas + gate + coachmarks.
 - Motion só transform/opacity, reduced-motion respeitado.
 
 ## Pendências de design
-Contraste/alvo a11y medidos com ferramenta · estados de erro humanizados · embutir a janela do IG (hoje é janela separada) · i18n (hoje só PT-BR).
+Tamanho de alvo ≥44px em controles pequenos · estados de erro mais humanizados · embutir a janela do IG (hoje é janela separada).

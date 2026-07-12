@@ -43,7 +43,14 @@ const TAB_IDS: TabId[] = ["instagram", "report", "clicks", "config"];
 export default function App() {
   const { t, needsChoice } = useI18n();
   const [tab, setTab] = useState<TabId>("report");
-  const [coach, setCoach] = useState(!needsChoice && !isOnboarded());
+  const [coach, setCoach] = useState(false);
+
+  // coachmarks: dispara quando o app aparece (idioma já escolhido) e ainda não foi visto.
+  // NÃO dá pra calcular no useState inicial: no 1º render needsChoice=true (gate na tela),
+  // e o initializer só roda 1x — ficaria falso pra sempre.
+  useEffect(() => {
+    if (!needsChoice && !isOnboarded()) setCoach(true);
+  }, [needsChoice]);
 
   // checa update assinado no boot (silencioso se não houver)
   useEffect(() => { if (!needsChoice) checkUpdate(t); }, [needsChoice]);
@@ -63,7 +70,7 @@ export default function App() {
         <div className="flex items-center gap-3 px-4 py-4 border-b border-[var(--color-line)]">
           <Logo s={38} />
           <div className="min-w-0">
-            <div className="text-[15px] font-extrabold tracking-tight leading-none bg-gradient-to-r from-[#00e5c9] via-[#7ef7e6] to-[#00e5c9] bg-clip-text text-transparent">
+            <div className="text-[15px] font-bold tracking-tight leading-none bg-gradient-to-r from-[#00e5c9] via-[#7ef7e6] to-[#00e5c9] bg-clip-text text-transparent">
               Codex IG
             </div>
             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-slate)]">{t("brand.tagline")}</div>
@@ -105,7 +112,7 @@ export default function App() {
       {/* main */}
       <main className="relative z-10 flex-1 overflow-auto">
         <header className="sticky top-0 z-10 backdrop-blur-sm bg-[var(--color-void)]/70 border-b border-[var(--color-line)] px-7 py-4">
-          <h1 className="text-xl font-extrabold tracking-tight">{active.label}</h1>
+          <h1 className="text-xl font-bold tracking-tight">{active.label}</h1>
           <p className="text-[13px] text-[var(--color-slate)]">{active.sub}</p>
         </header>
 

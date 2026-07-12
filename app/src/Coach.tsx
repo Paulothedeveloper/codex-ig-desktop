@@ -56,7 +56,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
         className="absolute w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,.9)]"
         style={card}
       >
-        <div className="text-[13px] font-extrabold text-[var(--color-teal)]">{t("coach." + step.id + ".t")}</div>
+        <div className="text-[13px] font-bold text-[var(--color-teal)]">{t("coach." + step.id + ".t")}</div>
         <div className="mt-1 text-[13px] text-[var(--color-slate)] leading-relaxed">{t("coach." + step.id + ".b")}</div>
         <div className="mt-3 flex items-center justify-between">
           <span className="text-[11px] text-[var(--color-slate)]">{t("coach.step", { i: i + 1, n: STEPS.length })}</span>
@@ -64,7 +64,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
             {!last && <button onClick={finish} className="text-[12px] text-[var(--color-slate)] hover:text-[var(--color-paper)]">{t("coach.skip")}</button>}
             <button
               onClick={() => (last ? finish() : setI(i + 1))}
-              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-extrabold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110"
+              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110"
             >
               {last ? t("coach.done") : t("coach.next")}
             </button>
