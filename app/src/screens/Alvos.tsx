@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Ic } from "../icons";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+import SessionError from "../SessionError";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 const SEGS = ["editor", "dev", "biz", "ref"] as const;
@@ -14,16 +15,17 @@ export default function Alvos() {
   const [seg, setSeg] = useState<string>(SEGS[0]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
   const [found, setFound] = useState<IgUser[] | null>(null);
 
   async function search() {
     const competitors = inp.split(",").map((s) => s.trim().replace(/^@/, "")).filter(Boolean);
     if (!competitors.length) { setMsg(t("targets.needOne")); return; }
-    setLoading(true); setMsg(""); setFound(null);
+    setLoading(true); setMsg(""); setErr(""); setFound(null);
     try {
       const r = await invoke<IgUser[]>("ig_targets", { competitors, cap });
       setFound(r);
-    } catch (e) { setMsg(t("targets.failed", { e: String(e) })); } finally { setLoading(false); }
+    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
   }
 
   function copyList() {
@@ -63,6 +65,7 @@ export default function Alvos() {
       </div>
 
       {msg && <div className="text-[13px] text-[var(--color-slate)]">{msg}</div>}
+      {err && <SessionError err={err} onRetry={search} failedKey="targets.failed" />}
 
       {found && (
         <>

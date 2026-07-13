@@ -4,6 +4,7 @@ import { Ic } from "../icons";
 import { useI18n } from "../i18n";
 import { useConfirm } from "../Confirm";
 import { ensureAccount, logUnfollow } from "../db";
+import SessionError from "../SessionError";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Graph = { following_count: number; followers_count: number; non_followers: IgUser[] };
@@ -125,7 +126,7 @@ export default function Limpar() {
           <button onClick={load} disabled={loading} className="mt-4 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
             {loading ? t("clean.loading") : t("clean.loadBtn")}
           </button>
-          {err && <div className="mt-3 text-[13px] text-[var(--color-coral2)]">{t("clean.failed", { e: err })}</div>}
+          {err && <div className="mt-4 text-left"><SessionError err={err} onRetry={load} failedKey="clean.failed" /></div>}
         </div>
       )}
 
