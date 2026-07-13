@@ -7,15 +7,22 @@ use tauri::Manager;
 
 const APPID: &str = "936619743392459"; // x-ig-app-id publico
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+/// Sentinela de "sessao invalida/deslogada" — o front detecta e mostra "faca login"
+/// em vez de vazar o erro cru de decode. Sessao expirada = IG redireciona a chamada
+/// da API pro homepage (HTML), e o r.json() estourava com "error decoding ... instagram.com/".
+pub const LOGIN: &str = "require_login";
 
 /// 1 Client reusavel (keep-alive + pool) com timeout — request sem timeout que pendura
 /// o socket travaria o comando inteiro; criar Client por request mata o keep-alive.
+/// redirect=none: uma chamada de /api/v1 NUNCA deve redirecionar; se IG responde 3xx
+/// (bounce pro login), queremos VER o 3xx e devolver LOGIN — nao seguir ate o HTML.
 fn client() -> &'static reqwest::Client {
     static C: OnceLock<reqwest::Client> = OnceLock::new();
     C.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(Duration::from_secs(25))
             .connect_timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest client")
     })
@@ -65,7 +72,8 @@ pub async fn session_from_webview(app: &tauri::AppHandle) -> Result<Session, Str
         .get_webview_window("ig")
         .ok_or("webview 'ig' nao existe")?;
     let cookies = wv.cookies().map_err(|e| format!("cookies(): {e}"))?;
-    let (mut ds, mut csrf, mut jar) = (String::new(), String::new(), Vec::new());
+    let (mut ds, mut csrf, mut sid, mut jar) =
+        (String::new(), String::new(), String::new(), Vec::new());
     for c in &cookies {
         let (n, v) = (c.name(), c.value());
         if n == "ds_user_id" {
@@ -74,10 +82,15 @@ pub async fn session_from_webview(app: &tauri::AppHandle) -> Result<Session, Str
         if n == "csrftoken" {
             csrf = v.to_string();
         }
+        if n == "sessionid" {
+            sid = v.to_string();
+        }
         jar.push(format!("{n}={v}"));
     }
-    if ds.is_empty() {
-        return Err("sem sessao — faca login no Instagram na aba".into());
+    // sessionid (httpOnly) e o que autentica a API. So ds_user_id/csrftoken (que sobrevivem
+    // a um logout) fazem a chamada ser redirecionada -> HTML -> erro criptico. Exigir sessionid.
+    if ds.is_empty() || sid.is_empty() {
+        return Err(LOGIN.into());
     }
     Ok(Session {
         ds,
@@ -114,10 +127,16 @@ async fn get_json(s: &Session, url: &str) -> Result<serde_json::Value, String> {
                     tokio::time::sleep(Duration::from_secs(2 * attempt)).await; // backoff 2s,4s
                     continue;
                 }
+                // 3xx numa chamada de API = IG mandando pro login (sessao invalida/expirada).
+                // 401 = require_login. (403 fica de fora — pode ser conta privada, nao sessao.)
+                if st.is_redirection() || st.as_u16() == 401 {
+                    return Err(LOGIN.into());
+                }
                 if !st.is_success() {
                     return Err(format!("HTTP {st}"));
                 }
-                return r.json().await.map_err(|e| format!("json: {e}"));
+                // endpoint de API que nao devolve JSON = parede de login (HTML) -> LOGIN, nao "json: ..."
+                return r.json().await.map_err(|_| LOGIN.to_string());
             }
             Err(e) => {
                 // timeout/conexao — 1 retry curto antes de desistir
@@ -276,6 +295,9 @@ pub async fn destroy(s: &Session, pk: &str) -> Result<(), String> {
         .await
         .map_err(|e| format!("req: {e}"))?;
     let st = r.status();
+    if st.is_redirection() || st.as_u16() == 401 {
+        return Err(LOGIN.into()); // bounce pro login = sessao caiu
+    }
     if st.as_u16() == 429 || st.as_u16() == 400 {
         return Err(format!("BLOCK {st}")); // IG reclamou -> parar tudo
     }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ensureAccount, saveSnapshot, growthSeries, whoLeft } from "../db";
 import { useI18n, LANGS } from "../i18n";
+import SessionError from "../SessionError";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Graph = {
@@ -110,12 +111,7 @@ export default function Relatorio() {
         </div>
       )}
 
-      {err && (
-        <div className="rounded-2xl border border-[#43221d] bg-[#1a0f0d] p-4 text-[13px] text-[var(--color-coral2)]">
-          {t("report.failed", { e: err })}
-          <button onClick={load} className="ml-3 underline">{t("report.retry")}</button>
-        </div>
-      )}
+      {err && <SessionError err={err} onRetry={load} failedKey="report.failed" />}
 
       {graph && (
         <div className="space-y-6">
