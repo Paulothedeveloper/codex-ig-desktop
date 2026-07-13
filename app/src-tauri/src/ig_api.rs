@@ -1,31 +1,36 @@
-// ig_api.rs — cliente da API web interna do Instagram usando a sessao do WebView2.
-// Leitura paginada + ritmada (anti-ban). Endpoints isolados aqui (IG muda sem avisar).
+// ig_api.rs — cliente da API web interna do Instagram.
+// MOTOR: o fetch roda DENTRO da webview logada (Chrome real: TLS/HTTP2 legitimos + cookies
+// httpOnly automaticos + same-origin). Fazer o request de fora (reqwest) o Meta detecta pelo
+// fingerprint e bounce pro homepage (bug landed=/), mesmo com o cookie certo. A webview faz o
+// fetch e EMITE o resultado de volta pro Rust por evento (capability ig-remote + withGlobalTauri).
 use serde::Serialize;
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Listener, Manager};
 
-const APPID: &str = "936619743392459"; // x-ig-app-id publico
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
-/// Sentinela de "sessao invalida/deslogada" — o front detecta e mostra "faca login"
-/// em vez de vazar o erro cru de decode. Sessao expirada = IG redireciona a chamada
-/// da API pro homepage (HTML), e o r.json() estourava com "error decoding ... instagram.com/".
-pub const LOGIN: &str = "require_login";
+pub const LOGIN: &str = "require_login"; // sentinela: sem sessao -> front mostra "faca login"
+pub const RATE: &str = "ig_rate_limited"; // IG limitou/bloqueou temporario -> front "espere uns minutos"
 
-/// 1 Client reusavel (keep-alive + pool) com timeout — request sem timeout que pendura
-/// o socket travaria o comando inteiro; criar Client por request mata o keep-alive.
-/// redirect=none: uma chamada de /api/v1 NUNCA deve redirecionar; se IG responde 3xx
-/// (bounce pro login), queremos VER o 3xx e devolver LOGIN — nao seguir ate o HTML.
-fn client() -> &'static reqwest::Client {
-    static C: OnceLock<reqwest::Client> = OnceLock::new();
-    C.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(25))
-            .connect_timeout(Duration::from_secs(10))
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("reqwest client")
-    })
+/// Resultados dos fetch da webview, por id de request (preenchido pelo listener do evento).
+fn results() -> &'static Mutex<HashMap<u64, String>> {
+    static R: OnceLock<Mutex<HashMap<u64, String>>> = OnceLock::new();
+    R.get_or_init(|| Mutex::new(HashMap::new()))
+}
+static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Registra o listener do evento 'ig_result' (chamar 1x no setup). A webview emite
+/// {id, ok, status, url, body}; guardamos o payload cru por id pro webview_fetch pegar.
+pub fn install_ig_listener(app: &tauri::AppHandle) {
+    app.listen("ig_result", |event| {
+        let payload = event.payload();
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
+            if let Some(id) = v["id"].as_u64() {
+                results().lock().unwrap().insert(id, payload.to_string());
+            }
+        }
+    });
 }
 
 /// Jitter derivado do relogio — evita intervalo fixo (mais fingerprintavel) nas leituras.
@@ -39,9 +44,8 @@ fn jitter_ms(base: u64) -> u64 {
 
 #[derive(Clone)]
 pub struct Session {
-    pub ds: String,
-    pub csrf: String,
-    pub cookie: String, // jar inteiro (incl sessionid httpOnly)
+    pub ds: String,   // user id (pra montar a URL)
+    pub csrf: String, // x-csrftoken
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -65,89 +69,107 @@ pub struct Post {
     pub caption: String,
 }
 
-/// Le os cookies do webview "ig" e monta a Session (reencaminha o JAR INTEIRO —
-/// so ds_user_id+csrftoken = 401 require_login). `cookies()` = async (trava sincrono no Windows).
+/// Le ds_user_id + csrftoken (nao-httpOnly) da webview so pra montar URL+header. A AUTENTICACAO
+/// (sessionid httpOnly) fica com o browser no fetch. Sem ds = deslogado -> require_login.
 pub async fn session_from_webview(app: &tauri::AppHandle) -> Result<Session, String> {
     let wv = app
         .get_webview_window("ig")
         .ok_or("webview 'ig' nao existe")?;
-    let cookies = wv.cookies().map_err(|e| format!("cookies(): {e}"))?;
-    let (mut ds, mut csrf, mut sid, mut jar) =
-        (String::new(), String::new(), String::new(), Vec::new());
+    let url: tauri::Url = "https://www.instagram.com/".parse().unwrap();
+    let cookies = wv
+        .cookies_for_url(url)
+        .map_err(|e| format!("cookies(): {e}"))?;
+    let (mut ds, mut csrf) = (String::new(), String::new());
     for c in &cookies {
-        let (n, v) = (c.name(), c.value());
-        if n == "ds_user_id" {
-            ds = v.to_string();
+        match c.name() {
+            "ds_user_id" => ds = c.value().to_string(),
+            "csrftoken" => csrf = c.value().to_string(),
+            _ => {}
         }
-        if n == "csrftoken" {
-            csrf = v.to_string();
-        }
-        if n == "sessionid" {
-            sid = v.to_string();
-        }
-        jar.push(format!("{n}={v}"));
     }
-    // sessionid (httpOnly) e o que autentica a API. So ds_user_id/csrftoken (que sobrevivem
-    // a um logout) fazem a chamada ser redirecionada -> HTML -> erro criptico. Exigir sessionid.
-    if ds.is_empty() || sid.is_empty() {
-        return Err(LOGIN.into());
+    if ds.is_empty() {
+        return Err(format!("{LOGIN} [sem ds_user_id, n={}]", cookies.len()));
     }
-    Ok(Session {
-        ds,
-        csrf,
-        cookie: jar.join("; "),
-    })
+    Ok(Session { ds, csrf })
 }
 
-async fn get_json(s: &Session, url: &str) -> Result<serde_json::Value, String> {
-    let mut attempt: u64 = 0;
-    loop {
-        let res = client()
-            .get(url)
-            .header("x-ig-app-id", APPID)
-            .header("x-csrftoken", &s.csrf)
-            .header("x-requested-with", "XMLHttpRequest")
-            .header("x-asbd-id", "129477")
-            .header("referer", "https://www.instagram.com/")
-            .header("sec-fetch-site", "same-origin")
-            .header("sec-fetch-mode", "cors")
-            .header("sec-fetch-dest", "empty")
-            .header("cookie", &s.cookie)
-            .header("user-agent", UA)
-            .send()
-            .await;
-        match res {
-            Ok(r) => {
-                let st = r.status();
-                if st.as_u16() == 429 {
-                    attempt += 1;
-                    if attempt >= 3 {
-                        return Err("429".into()); // rate-limit persistente -> chamador para
-                    }
-                    tokio::time::sleep(Duration::from_secs(2 * attempt)).await; // backoff 2s,4s
-                    continue;
-                }
-                // 3xx numa chamada de API = IG mandando pro login (sessao invalida/expirada).
-                // 401 = require_login. (403 fica de fora — pode ser conta privada, nao sessao.)
-                if st.is_redirection() || st.as_u16() == 401 {
-                    return Err(LOGIN.into());
-                }
-                if !st.is_success() {
-                    return Err(format!("HTTP {st}"));
-                }
-                // endpoint de API que nao devolve JSON = parede de login (HTML) -> LOGIN, nao "json: ..."
-                return r.json().await.map_err(|_| LOGIN.to_string());
+/// Roda o fetch DENTRO da webview 'ig' e espera o resultado (via evento). Retorna o JSON.
+/// post=true => POST form (unfollow). Sessao caida = o IG bounce e a URL final sai de /api/v1.
+async fn webview_fetch(
+    app: &tauri::AppHandle,
+    url: &str,
+    post: bool,
+    csrf: &str,
+) -> Result<serde_json::Value, String> {
+    let wv = app
+        .get_webview_window("ig")
+        .ok_or(format!("{LOGIN} [janela IG fechada]"))?;
+    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let method = if post { "POST" } else { "GET" };
+    let extra = if post {
+        ",'content-type':'application/x-www-form-urlencoded'"
+    } else {
+        ""
+    };
+    let bodypart = if post { ",body:''" } else { "" };
+    // url/csrf quotados via serde_json = string JS valida e sem injecao.
+    let js = format!(
+        "(async()=>{{try{{const r=await fetch({url},{{credentials:'include',method:'{method}',\
+headers:{{'x-ig-app-id':'936619743392459','x-csrftoken':{csrf},'x-asbd-id':'129477',\
+'x-ig-www-claim':'0','x-requested-with':'XMLHttpRequest'{extra}}}{bodypart}}});const t=await r.text();\
+window.__TAURI__.event.emit('ig_result',{{id:{id},ok:r.ok,status:r.status,url:r.url,ct:(r.headers.get('content-type')||''),body:t}});}}\
+catch(e){{window.__TAURI__.event.emit('ig_result',{{id:{id},ok:false,status:0,url:'',ct:'',body:'ERR:'+String(e)}});}}}})();",
+        url = serde_json::to_string(url).unwrap(),
+        csrf = serde_json::to_string(csrf).unwrap(),
+    );
+    wv.eval(&js).map_err(|e| format!("eval: {e}"))?;
+
+    // poll do resultado (webview responde em ms; teto 30s pra pagina grande)
+    for _ in 0..600 {
+        let hit = results().lock().unwrap().remove(&id);
+        if let Some(payload) = hit {
+            let v: serde_json::Value =
+                serde_json::from_str(&payload).map_err(|e| format!("ingest: {e}"))?;
+            let status = v["status"].as_u64().unwrap_or(0);
+            let ok = v["ok"].as_bool().unwrap_or(false);
+            let final_url = v["url"].as_str().unwrap_or("");
+            let body = v["body"].as_str().unwrap_or("");
+
+            // fetch do browser falhou (rede) — transitorio, tratar como "tente de novo".
+            if body.starts_with("ERR:") {
+                return Err(RATE.into());
             }
-            Err(e) => {
-                // timeout/conexao — 1 retry curto antes de desistir
-                attempt += 1;
-                if attempt >= 3 {
-                    return Err(format!("req: {e}"));
+            // Bloqueio temporario do IG: responde 401 JSON "Aguarde alguns minutos..." OU redireciona
+            // a chamada pro homepage (HTML). Como o ds ja foi confirmado (logado), isto NUNCA e logout
+            // — e throttle/checkpoint. Peek na mensagem do JSON confirma o soft-block.
+            if let Ok(jv) = serde_json::from_str::<serde_json::Value>(body) {
+                let m = jv["message"].as_str().unwrap_or("").to_lowercase();
+                if jv["require_login"].as_bool().unwrap_or(false)
+                    || m.contains("aguarde")
+                    || m.contains("wait")
+                    || m.contains("few minutes")
+                    || m.contains("try again")
+                    || m.contains("spam")
+                {
+                    return Err(RATE.into());
                 }
-                tokio::time::sleep(Duration::from_secs(1)).await;
             }
+            if status == 429 || status == 400 {
+                return Err("BLOCK".into()); // usado por destroy pra parar a limpeza
+            }
+            // redirecionou pro homepage (saiu de /api/v1) estando logado = block/checkpoint temporario
+            if !final_url.contains("/api/v1/") || status == 401 || status == 403 {
+                return Err(RATE.into());
+            }
+            if !ok {
+                return Err(format!("HTTP {status}"));
+            }
+            // corpo nao-JSON num endpoint de API = parede do IG (HTML) = throttle
+            return serde_json::from_str(body).map_err(|_| RATE.to_string());
         }
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    Err("timeout: a janela do Instagram nao respondeu (recarregue a janela e tente)".into())
 }
 
 fn parse_users(j: &serde_json::Value) -> Vec<IgUser> {
@@ -170,7 +192,11 @@ fn parse_users(j: &serde_json::Value) -> Vec<IgUser> {
 }
 
 /// Lista paginada (count=200) + ritmada. kind = "following" | "followers".
-pub async fn friendships(s: &Session, kind: &str) -> Result<Vec<IgUser>, String> {
+pub async fn friendships(
+    app: &tauri::AppHandle,
+    s: &Session,
+    kind: &str,
+) -> Result<Vec<IgUser>, String> {
     let mut out = Vec::new();
     let mut next = String::new();
     for _ in 0..300 {
@@ -184,7 +210,7 @@ pub async fn friendships(s: &Session, kind: &str) -> Result<Vec<IgUser>, String>
                 format!("&max_id={next}")
             }
         );
-        let j = get_json(s, &url).await?;
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
         out.extend(parse_users(&j));
         next = j["next_max_id"].as_str().unwrap_or("").to_string();
         if next.is_empty() {
@@ -196,12 +222,12 @@ pub async fn friendships(s: &Session, kind: &str) -> Result<Vec<IgUser>, String>
 }
 
 /// Ultimos posts proprios (likes/coments/views publicos) pro Relatorio.
-pub async fn feed(s: &Session, count: u32) -> Result<Vec<Post>, String> {
+pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec<Post>, String> {
     let url = format!(
         "https://www.instagram.com/api/v1/feed/user/{}/?count={count}",
         s.ds
     );
-    let j = get_json(s, &url).await?;
+    let j = webview_fetch(app, &url, false, &s.csrf).await?;
     Ok(j["items"]
         .as_array()
         .map(|a| {
@@ -228,17 +254,26 @@ pub async fn feed(s: &Session, count: u32) -> Result<Vec<Post>, String> {
 }
 
 /// Perfil público por username (web_profile_info) → devolve o JSON do user (id, contagens).
-pub async fn profile(s: &Session, username: &str) -> Result<serde_json::Value, String> {
+pub async fn profile(
+    app: &tauri::AppHandle,
+    s: &Session,
+    username: &str,
+) -> Result<serde_json::Value, String> {
     let url = format!(
         "https://www.instagram.com/api/v1/users/web_profile_info/?username={}",
         urlencode(username)
     );
-    let j = get_json(s, &url).await?;
+    let j = webview_fetch(app, &url, false, &s.csrf).await?;
     Ok(j["data"]["user"].clone())
 }
 
 /// Seguidores de um perfil (concorrente PÚBLICO), paginado + ritmado, até `cap`.
-pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUser>, String> {
+pub async fn followers_of(
+    app: &tauri::AppHandle,
+    s: &Session,
+    pk: &str,
+    cap: usize,
+) -> Result<Vec<IgUser>, String> {
     let mut out = Vec::new();
     let mut next = String::new();
     for _ in 0..80 {
@@ -251,7 +286,7 @@ pub async fn followers_of(s: &Session, pk: &str, cap: usize) -> Result<Vec<IgUse
                 format!("&max_id={next}")
             }
         );
-        let j = get_json(s, &url).await?;
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
         out.extend(parse_users(&j));
         next = j["next_max_id"].as_str().unwrap_or("").to_string();
         if next.is_empty() || out.len() >= cap {
@@ -276,35 +311,19 @@ fn urlencode(s: &str) -> String {
 }
 
 /// Unfollow (escrita — o chamador ritma/whitelista/para no BLOCK).
-pub async fn destroy(s: &Session, pk: &str) -> Result<(), String> {
-    // pk vem do front (do usuario), mas validar antes de injetar na URL (input no comando Rust)
+pub async fn destroy(app: &tauri::AppHandle, s: &Session, pk: &str) -> Result<(), String> {
+    // pk vem do front (do usuario), validar antes de injetar na URL.
     if pk.is_empty() || !pk.chars().all(|c| c.is_ascii_digit()) {
         return Err("pk invalido".into());
     }
     let url = format!("https://www.instagram.com/api/v1/friendships/destroy/{pk}/");
-    let r = client()
-        .post(&url)
-        .header("x-ig-app-id", APPID)
-        .header("x-csrftoken", &s.csrf)
-        .header("x-requested-with", "XMLHttpRequest")
-        .header("referer", "https://www.instagram.com/")
-        .header("cookie", &s.cookie)
-        .header("content-type", "application/x-www-form-urlencoded")
-        .header("user-agent", UA)
-        .send()
-        .await
-        .map_err(|e| format!("req: {e}"))?;
-    let st = r.status();
-    if st.is_redirection() || st.as_u16() == 401 {
-        return Err(LOGIN.into()); // bounce pro login = sessao caiu
+    // webview_fetch mapeia 400/429 -> BLOCK (chamador para) e login-bounce -> require_login.
+    let j = webview_fetch(app, &url, true, &s.csrf).await?;
+    if j["status"].as_str() == Some("ok") {
+        Ok(())
+    } else {
+        Err(format!("HTTP {j}"))
     }
-    if st.as_u16() == 429 || st.as_u16() == 400 {
-        return Err(format!("BLOCK {st}")); // IG reclamou -> parar tudo
-    }
-    if !st.is_success() {
-        return Err(format!("HTTP {st}"));
-    }
-    Ok(())
 }
 
 /// PURA: nao-seguidores = seguindo - seguidores (por pk). Unit-testavel, sem rede.

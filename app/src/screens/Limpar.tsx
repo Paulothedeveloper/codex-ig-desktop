@@ -100,7 +100,7 @@ export default function Limpar() {
       } catch (e) {
         const msg = String(e);
         if (accountId != null) logUnfollow(accountId, u.pk, u.username, msg.slice(0, 80)).catch(() => {});
-        if (msg.includes("BLOCK")) { addLog("warn", t("clean.blocked", { m: msg })); stop = true; break; }
+        if (msg.includes("BLOCK") || msg.includes("ig_rate_limited")) { addLog("warn", t("clean.blocked", { m: msg })); stop = true; break; }
         addLog("warn", `@${u.username}: ${msg}`);
       }
       setProg(((i + 1) / marked.length) * 100);

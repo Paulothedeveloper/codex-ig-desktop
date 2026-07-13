@@ -53,8 +53,8 @@ async fn ig_session_ok(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn ig_graph(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let s = sess(&app).await?;
-    let following = ig_api::friendships(&s, "following").await?;
-    let followers = ig_api::friendships(&s, "followers").await?;
+    let following = ig_api::friendships(&app, &s, "following").await?;
+    let followers = ig_api::friendships(&app, &s, "followers").await?;
     let non = ig_api::non_followers(&following, &followers);
     Ok(serde_json::json!({
         "following_count": following.len(),
@@ -69,14 +69,14 @@ async fn ig_graph(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn ig_feed(app: tauri::AppHandle, count: Option<u32>) -> Result<Vec<Post>, String> {
     let s = sess(&app).await?;
-    ig_api::feed(&s, count.unwrap_or(12)).await
+    ig_api::feed(&app, &s, count.unwrap_or(12)).await
 }
 
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
 #[tauri::command]
 async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
     let s = sess(&app).await?;
-    ig_api::destroy(&s, &pk).await
+    ig_api::destroy(&app, &s, &pk).await
 }
 
 /// Público-alvo: seguidores dos concorrentes, tirando quem eu já sigo (fila assistida).
@@ -88,7 +88,7 @@ async fn ig_targets(
 ) -> Result<Vec<ig_api::IgUser>, String> {
     let s = sess(&app).await?;
     let cap = cap.unwrap_or(300) as usize;
-    let following = ig_api::friendships(&s, "following").await?;
+    let following = ig_api::friendships(&app, &s, "following").await?;
     let already: std::collections::HashSet<String> =
         following.iter().map(|u| u.pk.clone()).collect();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -98,7 +98,7 @@ async fn ig_targets(
         if name.is_empty() {
             continue;
         }
-        let prof = match ig_api::profile(&s, name).await {
+        let prof = match ig_api::profile(&app, &s, name).await {
             Ok(p) => p,
             Err(_) => continue,
         };
@@ -106,7 +106,7 @@ async fn ig_targets(
         if id.is_empty() {
             continue;
         }
-        for u in ig_api::followers_of(&s, &id, cap).await? {
+        for u in ig_api::followers_of(&app, &s, &id, cap).await? {
             if u.pk == s.ds || already.contains(&u.pk) || !seen.insert(u.pk.clone()) {
                 continue;
             }
@@ -147,6 +147,7 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            ig_api::install_ig_listener(app.handle());
             open_ig(app.handle())?;
             Ok(())
         })
