@@ -77,7 +77,7 @@ export default function Alvos() {
             {found.slice(0, 400).map((u, i) => (
               <a key={u.pk} href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5">
                 <span className="w-6 text-[11px] text-[var(--color-slate)] text-right">{i + 1}</span>
-                <span className="flex-1 min-w-0 truncate text-[13px]">@{u.username}{u.full ? <span className="text-[var(--color-slate)] text-[12px]"> · {u.full}</span> : null}</span>
+                <span className="flex-1 min-w-0 truncate text-[13px] pii">@{u.username}{u.full ? <span className="text-[var(--color-slate)] text-[12px]"> · {u.full}</span> : null}</span>
                 {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} label={t("a11y.verified")} /></span>}
                 {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} label={t("a11y.private")} /></span>}
                 <span className="text-[var(--color-slate)]"><Ic n="external" s={14} /></span>

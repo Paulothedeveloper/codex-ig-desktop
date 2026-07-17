@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n, LANGS, type Lang } from "../i18n";
 import { useConfirm } from "../Confirm";
+import { privacyOn, setPrivacy } from "../privacy";
 
 const WL_KEY = "codexig_whitelist";
 
@@ -11,6 +12,7 @@ export default function Config() {
   const [uid, setUid] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [wl, setWl] = useState<string[]>(JSON.parse(localStorage.getItem(WL_KEY) || "[]"));
+  const [blur, setBlur] = useState(privacyOn());
 
   async function check() {
     setChecking(true);
@@ -81,8 +83,25 @@ export default function Config() {
         </div>
       </div>
 
+      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)] mb-3">{t("config.privacy")}</div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[14px] font-bold text-[var(--color-paper)]">{t("config.privacyBlur")}</div>
+            <div className="mt-1 text-[12px] text-[var(--color-slate)] leading-snug">{t("config.privacyBlurHint")}</div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={blur}
+            onClick={() => { const v = !blur; setBlur(v); setPrivacy(v); }}
+            className={"relative h-7 w-12 shrink-0 rounded-full border transition " + (blur ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] border-transparent" : "bg-[#0e1522] border-[var(--color-steel)]")}
+          >
+            <span className={"absolute top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white transition-all " + (blur ? "left-[26px]" : "left-[3px]")} />
+          </button>
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 text-[13px] text-[var(--color-slate)] leading-relaxed">
-        <div className="text-[11px] uppercase tracking-widest mb-2">{t("config.privacy")}</div>
         {t("config.privacyBody")}
       </div>
     </div>

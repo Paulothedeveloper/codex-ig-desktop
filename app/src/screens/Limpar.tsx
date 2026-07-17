@@ -164,7 +164,7 @@ export default function Limpar() {
               <label key={u.pk} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5">
                 <input type="checkbox" checked={sel.has(u.pk)} onChange={() => toggleSel(u.pk)} className="accent-[var(--color-teal)]" />
                 <a href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[13px] hover:text-[var(--color-teal)] inline-flex items-center gap-1">
-                  <span className="truncate">@{u.username}</span>
+                  <span className="truncate pii">@{u.username}</span>
                   {u.verif && <span className="text-[var(--color-teal)]"><Ic n="badge" s={13} label={t("a11y.verified")} /></span>}
                   {u.priv && <span className="text-[var(--color-slate)]"><Ic n="lock" s={13} label={t("a11y.private")} /></span>}
                 </a>
