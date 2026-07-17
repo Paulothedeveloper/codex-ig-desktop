@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* ---- Modo privacidade: borra @ de terceiros (print seguro) ---- */
+.pii-blur .pii {
+  filter: blur(6px);
+  user-select: none;
+  transition: filter 0.12s ease;
+}
+.pii-blur .pii:hover {
+  filter: none;
+}
+
 /* ---- Identidade Codex Arena ---- */
 @theme {
   --color-void: #0b0e17;
