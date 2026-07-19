@@ -20,7 +20,7 @@
 
 ## O mascote
 
-<img src="docs/ninja.png" alt="Codex IG ninja" width="200" align="right" />
+<img src="docs/ninja.png" alt="Codex IG: ninja" width="200" align="right" />
 
 Um **navegador-Codex dedicado**: abre o instagram.com onde **você loga normal** (a sua sessão), e o app lê essa sessão pra entregar, em telas nativas, tudo que a suíte faz. Não é bot de login (bane), não passa por loja (reprova app que automatiza Instagram) → **download direto e grátis**.
 
@@ -36,11 +36,11 @@ Leitura = risco baixo; unfollow = **você define o ritmo**, com medidor de risco
 
 ## O que faz
 
-- **Instagram**: *Limpar* (deixar de seguir quem não retribui, ritmado, com whitelist e parada automática) + *Alvos* (seguidores de concorrentes = seu público).
-- **Relatório**: seguindo/seguidores/não-retribuem/mútuos/fãs, engajamento e top posts, **crescimento de seguidores no tempo** (SQLite local) e quem deixou de te seguir.
-- **Cliques**: tracker de cliques no link da bio (worker Cloudflare próprio), sem PII.
-- **Config**: conta, whitelist, export CSV, **5 idiomas** (PT/EN/ES/FR/DE) e privacidade.
-- **Tudo local**: cookies lidos em runtime, **nunca gravados**, sem servidor de terceiro. Auto-update assinado.
+- **Instagram:** *Limpar* (deixar de seguir quem não retribui, ritmado, com whitelist e parada automática) + *Alvos* (seguidores de concorrentes = seu público).
+- **Relatório:** seguindo/seguidores/não-retribuem/mútuos/fãs, engajamento e top posts, **crescimento de seguidores no tempo** (SQLite local) e quem deixou de te seguir.
+- **Cliques:** tracker de cliques no link da bio (worker Cloudflare próprio), sem PII.
+- **Config:** conta, whitelist, export CSV, **5 idiomas** (PT/EN/ES/FR/DE) e privacidade.
+- **Tudo local:** cookies lidos em runtime, **nunca gravados**, sem servidor de terceiro. Auto-update assinado.
 
 ## Download
 
@@ -64,7 +64,7 @@ Tauri 2 · Rust (`reqwest`, `sqlx` via `tauri-plugin-sql`) · React 19 + Vite + 
 
 ## In English
 
-Desktop **growth / report / link-click** app for **your own** Instagram: runs on **your real session**, 100% local, no login-bot, no store, **free**. Native screens for cleanup (unfollow non-followers at your pace, whitelist + auto-stop), competitor-follower targeting, growth report (followers over time via local SQLite), and a bio-link click tracker on your own Cloudflare worker. Instagram cookies are read at runtime, **never stored**; no third-party server, no PII. 5 languages, signed auto-update. **Use at your own risk** (may conflict with Instagram's Terms, see [`DISCLAIMER.md`](DISCLAIMER.md)). Download: **[Releases](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)**.
+Desktop **growth / report / link-click** app for **your own** Instagram, runs on **your real session**, 100% local, no login-bot, no store, **free**. Native screens for cleanup (unfollow non-followers at your pace, whitelist + auto-stop), competitor-follower targeting, growth report (followers over time via local SQLite), and a bio-link click tracker on your own Cloudflare worker. Instagram cookies are read at runtime, **never stored**; no third-party server, no PII. 5 languages, signed auto-update. **Use at your own risk** (may conflict with Instagram's Terms, see [`DISCLAIMER.md`](DISCLAIMER.md)). Download: **[Releases](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)**.
 
 ---
 
@@ -78,7 +78,7 @@ Desktop **growth / report / link-click** app for **your own** Instagram: runs on
 
 ## Licença
 
-[MIT](LICENSE). © 2026 Paulo Batista (Paulocodex). Software "as is", sem garantia.
+[MIT](LICENSE), © 2026 Paulo Batista (Paulocodex). Software "as is", sem garantia.
 
 ---
 
