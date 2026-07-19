@@ -30,7 +30,7 @@ export default function Alvos() {
 
   function copyList() {
     if (!found) return;
-    const txt = found.map((u, i) => `${i + 1}. @${u.username} — ${u.full || ""} https://instagram.com/${u.username}`).join("\n");
+    const txt = found.map((u, i) => `${i + 1}. @${u.username} · ${u.full || ""} https://instagram.com/${u.username}`).join("\n");
     navigator.clipboard.writeText(txt).then(() => setMsg(t("targets.copied")));
   }
 
