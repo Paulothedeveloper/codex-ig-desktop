@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# updater signing key (SECRET - nunca commitar)
+codex-ig-updater.key
+*.updater-pass
