@@ -6,7 +6,7 @@
 
 **Growth suite pro seu Instagram: roda na sua própria sessão, 100% local, sem bot que loga por você.**
 
-[![status](https://img.shields.io/badge/status-GR%C3%81TIS-00E5C9?style=for-the-badge&labelColor=0b0e17)](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)
+[![status](https://img.shields.io/badge/status-EM%20DESENVOLVIMENTO-00E5C9?style=for-the-badge&labelColor=0b0e17)](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)
 [![versão](https://img.shields.io/github/v/release/Paulothedeveloper/codex-ig-desktop?style=for-the-badge&color=00e5c9&label=vers%C3%A3o&labelColor=0b0e17)](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/Paulothedeveloper/codex-ig-desktop/total?style=for-the-badge&color=ff4d3d&label=downloads&labelColor=0b0e17)](https://github.com/Paulothedeveloper/codex-ig-desktop/releases)
 [![Windows](https://img.shields.io/badge/Windows-1f1f1f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Paulothedeveloper/codex-ig-desktop/releases/latest)
