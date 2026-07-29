@@ -274,6 +274,73 @@ fn parse_users(j: &serde_json::Value) -> Vec<IgUser> {
         .unwrap_or_default()
 }
 
+/// Anda o JSON inteiro e junta QUALQUER objeto que pareca um user (tem "username" + "pk").
+/// Uso: endpoints nao-documentados (reshares/reposts) cujo formato de resposta nao conheco.
+fn harvest_users(j: &serde_json::Value, out: &mut Vec<IgUser>, seen: &mut std::collections::HashSet<String>) {
+    match j {
+        serde_json::Value::Object(m) => {
+            if m.contains_key("username") && (m.contains_key("pk") || m.contains_key("pk_id") || m.contains_key("id")) {
+                let pk = m.get("pk").or_else(|| m.get("pk_id")).or_else(|| m.get("id"))
+                    .map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.as_i64().map(|n| n.to_string()).unwrap_or_default()))
+                    .unwrap_or_default();
+                let username = m.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if !username.is_empty() && seen.insert(if pk.is_empty() { username.clone() } else { pk.clone() }) {
+                    out.push(IgUser {
+                        pk,
+                        username,
+                        full: m.get("full_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        is_private: m.get("is_private").and_then(|v| v.as_bool()).unwrap_or(false),
+                        is_verified: m.get("is_verified").and_then(|v| v.as_bool()).unwrap_or(false),
+                    });
+                }
+            }
+            for v in m.values() {
+                harvest_users(v, out, seen);
+            }
+        }
+        serde_json::Value::Array(a) => {
+            for v in a {
+                harvest_users(v, out, seen);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Quem RECOMPARTILHOU o post no story (endpoint NAO-documentado + efemero: so stories ATIVOS
+/// <24h, conta profissional, contas publicas). Tenta os caminhos plausiveis sozinho (sem captura
+/// manual). Devolve (users, tentou_ok) — vazio nao e erro, e "ninguem ativo agora".
+pub async fn reshares(
+    app: &tauri::AppHandle,
+    s: &Session,
+    media_id: &str,
+) -> Result<Vec<IgUser>, String> {
+    if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
+        return Err("media_id invalido".into());
+    }
+    // candidatos observados/plausiveis pro "ver recompartilhamentos"
+    let paths = [
+        format!("https://www.instagram.com/api/v1/media/{media_id}/story_reshares/"),
+        format!("https://www.instagram.com/api/v1/media/{media_id}/reshares/"),
+        format!("https://www.instagram.com/api/v1/media/{media_id}/resharers/"),
+    ];
+    let mut users = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for url in &paths {
+        if let Ok(j) = webview_fetch(app, url, false, &s.csrf).await {
+            // ignora resposta de erro/login; so colhe users
+            if j["status"].as_str() != Some("fail") {
+                harvest_users(&j, &mut users, &mut seen);
+            }
+            if !users.is_empty() {
+                break; // achou um endpoint que responde com gente
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(500))).await;
+    }
+    Ok(users)
+}
+
 /// Lista paginada (count=200) + ritmada. kind = "following" | "followers".
 pub async fn friendships(
     app: &tauri::AppHandle,

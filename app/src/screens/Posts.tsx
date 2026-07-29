@@ -4,6 +4,9 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
 import { exportInteractionsPdf, exportUnifiedPdf } from "../pdf";
+import type { UniPost, UniRow } from "../pdf";
+
+type UniReport = { posts: UniPost[]; rows: UniRow[]; totLikes: number; totCmts: number };
 
 // normaliza p/ busca: tira acento + minuscula (filtro forte, casa "tamara" com "Tâmara")
 const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -45,45 +48,6 @@ function SortBtn({ on, onClick, label }: { on: boolean; onClick: () => void; lab
   );
 }
 
-function CapturePanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }) {
-  const [on, setOn] = useState(false);
-  const [list, setList] = useState<{ url: string; method: string; hot: boolean }[]>([]);
-  const [out, setOut] = useState("");
-  async function start() {
-    try { await invoke("ig_capture_start"); setOn(true); setOut(""); } catch (e) { setOut(String(e)); }
-  }
-  async function show() { setList(await invoke<{ url: string; method: string; hot: boolean }[]>("ig_capture_get")); }
-  async function clear() { await invoke("ig_capture_clear"); setList([]); }
-  async function tryit(u: string) {
-    setOut(t("capture.testing"));
-    try { setOut(JSON.stringify(await invoke("ig_raw_get", { url: u }), null, 1).slice(0, 6000)); }
-    catch (e) { setOut(String(e)); }
-  }
-  return (
-    <details className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
-      <summary className="cursor-pointer text-[13px] font-bold text-[var(--color-teal2)]">{t("capture.title")}</summary>
-      <p className="mt-2 text-[12px] leading-snug text-[var(--color-slate)]">{t("capture.hint")}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={start} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12.5px] font-bold text-[#04120f]">{on ? t("capture.on") : t("capture.start")}</button>
-        <button onClick={show} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("capture.show")}</button>
-        <button onClick={clear} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] text-[var(--color-slate)]">{t("capture.clear")}</button>
-      </div>
-      <div className="mt-3 max-h-[34vh] space-y-1 overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-2 font-mono text-[11px]">
-        {list.length === 0 ? (
-          <p className="text-[var(--color-slate)]">{t("capture.none")}</p>
-        ) : (
-          list.map((e, i) => (
-            <div key={i} className={"flex items-center justify-between gap-2 rounded px-1.5 py-1 " + (e.hot ? "bg-[#0e2a24] text-[var(--color-teal2)]" : "text-[var(--color-slate)]")}>
-              <span className="truncate">{e.hot ? "★ " : ""}{e.method} {e.url.replace("https://www.instagram.com", "")}</span>
-              <button onClick={() => tryit(e.url)} className="shrink-0 rounded border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-paper)]">{t("capture.test")}</button>
-            </div>
-          ))
-        )}
-      </div>
-      {out && <pre className="mt-2 max-h-[30vh] overflow-auto rounded-lg border border-[var(--color-line)] bg-[#05080d] p-2 text-[10.5px] text-[var(--color-ink)] whitespace-pre-wrap break-all">{out}</pre>}
-    </details>
-  );
-}
 
 export default function Posts() {
   const { t, nf, lang } = useI18n();
@@ -98,13 +62,17 @@ export default function Posts() {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [dLoading, setDLoading] = useState(false);
   const [dErr, setDErr] = useState("");
-  const [view, setView] = useState<"likes" | "comments">("likes");
+  const [view, setView] = useState<"likes" | "comments" | "reshares">("likes");
+  const [reshares, setReshares] = useState<IgUser[] | null>(null);
+  const [reLoading, setReLoading] = useState(false);
   const [sortL, setSortL] = useState<"recencia" | "alpha">("recencia");
   const [sortC, setSortC] = useState<"data" | "alpha">("data");
   const [filter, setFilter] = useState("");
   // multi-selecao p/ relatorio unificado
   const [picks, setPicks] = useState<Record<string, Post>>({});
   const [uni, setUni] = useState<{ on: boolean; done: number; total: number }>({ on: false, done: 0, total: 0 });
+  // relatorio unificado montado (visto DENTRO do app; PDF vira botao)
+  const [uniData, setUniData] = useState<UniReport | null>(null);
 
   const f = norm(filter);
   const matchU = (u: IgUser) => !f || norm(u.username).includes(f) || norm(u.full).includes(f);
@@ -164,12 +132,16 @@ export default function Posts() {
   }
 
   // relatorio UNIFICADO: puxa CURTIDAS + COMENTARIOS de cada post, junta por pessoa (dedup),
-  // mostrando quais posts ela curtiu e quais comentou.
-  async function exportUnified() {
+  // guarda quais posts curtiu + o TEXTO do comentario em qual post. Mostra DENTRO do app.
+  async function buildUnified() {
     const chosen = pickIds.map((id) => picks[id]);
     if (chosen.length < 2) return;
     setUni({ on: true, done: 0, total: chosen.length });
-    const map = new Map<string, { u: IgUser; liked: string[]; commented: string[] }>();
+    const posts: UniPost[] = chosen.map((p, i) => ({
+      label: `#${i + 1}`,
+      sub: `${dt(p.taken_at)} · ${(p.caption || t("posts.noCaption")).slice(0, 60)}`,
+    }));
+    const map = new Map<string, { u: IgUser; liked: number[]; commented: { post: number; text: string }[] }>();
     const ensure = (u: IgUser) => {
       let e = map.get(u.pk);
       if (!e) { e = { u, liked: [], commented: [] }; map.set(u.pk, e); }
@@ -179,31 +151,20 @@ export default function Posts() {
     try {
       for (let i = 0; i < chosen.length; i++) {
         const p = chosen[i];
-        const label = p.code || dt(p.taken_at);
         const [lk, cm] = await Promise.all([
           invoke<IgUser[]>("ig_likers", { mediaId: p.id }),
           invoke<Comment[]>("ig_comments", { mediaId: p.id }),
         ]);
         totLikes += lk.length;
         totCmts += cm.length;
-        for (const u of lk) { const e = ensure(u); if (!e.liked.includes(label)) e.liked.push(label); }
-        for (const c of cm) { const e = ensure(c.user); if (!e.commented.includes(label)) e.commented.push(label); }
+        for (const u of lk) { const e = ensure(u); if (!e.liked.includes(i)) e.liked.push(i); }
+        for (const c of cm) { const e = ensure(c.user); e.commented.push({ post: i, text: c.text }); }
         setUni({ on: true, done: i + 1, total: chosen.length });
       }
-      const rows = [...map.values()]
+      const rows: UniRow[] = [...map.values()]
         .sort((a, b) => (b.liked.length + b.commented.length) - (a.liked.length + a.commented.length) || a.u.username.localeCompare(b.u.username))
         .map((e) => ({ username: e.u.username, full: e.u.full, verif: e.u.verif, liked: e.liked, commented: e.commented }));
-      const bytes = exportUnifiedPdf({
-        title: t("posts.uniTitle", { n: chosen.length }),
-        subtitle: t("posts.uniSub", { people: rows.length, likes: totLikes, cmts: totCmts, posts: chosen.length }),
-        rows,
-        colUser: t("posts.colUser"),
-        colName: t("posts.colName"),
-        colLiked: t("posts.colLiked"),
-        colCommented: t("posts.colCommented"),
-        footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
-      });
-      await saveBytes(bytes, `codexig-unificado-${chosen.length}posts.pdf`, "PDF", "pdf");
+      setUniData({ posts, rows, totLikes, totCmts });
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -211,10 +172,37 @@ export default function Posts() {
     }
   }
 
+  // baixa o PDF do relatorio JA montado (botao dentro da tela)
+  async function downloadUnifiedPdf() {
+    if (!uniData) return;
+    const bytes = exportUnifiedPdf({
+      title: t("posts.uniTitle", { n: uniData.posts.length }),
+      subtitle: t("posts.uniSub", { people: uniData.rows.length, likes: uniData.totLikes, cmts: uniData.totCmts, posts: uniData.posts.length }),
+      posts: uniData.posts,
+      rows: uniData.rows,
+      legendLabel: t("posts.legend"),
+      colUser: t("posts.colUser"),
+      colName: t("posts.colName"),
+      colLiked: t("posts.colLiked"),
+      colCommented: t("posts.colCommented"),
+      footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
+    });
+    setSaving(true);
+    try { await saveBytes(bytes, `codexig-unificado-${uniData.posts.length}posts.pdf`, "PDF", "pdf"); } catch (e) { setErr(String(e)); } finally { setSaving(false); }
+  }
+
+  async function openReshares(p: Post) {
+    setReLoading(true);
+    try { setReshares(await invoke<IgUser[]>("ig_reshares", { mediaId: p.id })); }
+    catch { setReshares([]); }
+    finally { setReLoading(false); }
+  }
+
   async function open(p: Post) {
     setSel(p);
     setLikers(null);
     setComments(null);
+    setReshares(null);
     setDErr("");
     setView("likes");
     setFilter("");
@@ -285,7 +273,6 @@ export default function Posts() {
             {t("posts.load")}
           </button>
         </div>
-        <CapturePanel t={t} />
       </div>
     );
   }
@@ -358,7 +345,7 @@ export default function Posts() {
           <div className="flex items-center gap-2">
             <button onClick={() => setPicks({})} className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--color-slate)] hover:text-[var(--color-paper)]">{t("posts.clearPicks")}</button>
             <button
-              onClick={exportUnified}
+              onClick={buildUnified}
               disabled={pickIds.length < 2 || uni.on}
               className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40"
             >
@@ -404,54 +391,79 @@ export default function Posts() {
             </div>
           ) : (
             <div className="mt-4">
-              <div className="mb-2 flex gap-2">
+              <div className="mb-2 flex flex-wrap gap-2">
                 <button onClick={() => setView("likes")} className={"rounded-lg px-3 py-1.5 text-[13px] font-bold " + (view === "likes" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)]")}>
                   {t("posts.whoLiked")} ({nf(likers?.length || 0)})
                 </button>
                 <button onClick={() => setView("comments")} className={"rounded-lg px-3 py-1.5 text-[13px] font-bold " + (view === "comments" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)]")}>
                   {t("posts.whoCommented")} ({nf(comments?.length || 0)})
                 </button>
+                <button
+                  onClick={() => { setView("reshares"); if (reshares === null && !reLoading) openReshares(sel); }}
+                  className={"rounded-lg px-3 py-1.5 text-[13px] font-bold " + (view === "reshares" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)]")}
+                >
+                  {t("posts.whoReshared")}{reshares ? ` (${nf(reshares.length)})` : ""}
+                </button>
               </div>
 
-              {/* filtro em tempo real (@ ou nome; comentário também casa texto) */}
-              <input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder={t("posts.filterPh")}
-                className="mb-2 w-full rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
-              />
+              {view !== "reshares" && (
+                <>
+                  {/* filtro em tempo real (@ ou nome; comentário também casa texto) */}
+                  <input
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder={t("posts.filterPh")}
+                    className="mb-2 w-full rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
+                  />
 
-              {/* ordenação */}
-              <div className="mb-2 flex items-center gap-2 text-[11.5px]">
-                <span className="text-[var(--color-slate)]">{t("posts.sortBy")}:</span>
-                {view === "likes" ? (
-                  <>
-                    <SortBtn on={sortL === "recencia"} onClick={() => setSortL("recencia")} label={t("posts.sortRecent")} />
-                    <SortBtn on={sortL === "alpha"} onClick={() => setSortL("alpha")} label={t("posts.sortAlpha")} />
-                  </>
-                ) : (
-                  <>
-                    <SortBtn on={sortC === "data"} onClick={() => setSortC("data")} label={t("posts.sortDate")} />
-                    <SortBtn on={sortC === "alpha"} onClick={() => setSortC("alpha")} label={t("posts.sortAlpha")} />
-                  </>
-                )}
-                {f && <span className="text-[var(--color-teal2)]">{t("posts.filtering", { n: view === "likes" ? likersSorted.length : commentsSorted.length })}</span>}
-              </div>
+                  {/* ordenação */}
+                  <div className="mb-2 flex items-center gap-2 text-[11.5px]">
+                    <span className="text-[var(--color-slate)]">{t("posts.sortBy")}:</span>
+                    {view === "likes" ? (
+                      <>
+                        <SortBtn on={sortL === "recencia"} onClick={() => setSortL("recencia")} label={t("posts.sortRecent")} />
+                        <SortBtn on={sortL === "alpha"} onClick={() => setSortL("alpha")} label={t("posts.sortAlpha")} />
+                      </>
+                    ) : (
+                      <>
+                        <SortBtn on={sortC === "data"} onClick={() => setSortC("data")} label={t("posts.sortDate")} />
+                        <SortBtn on={sortC === "alpha"} onClick={() => setSortC("alpha")} label={t("posts.sortAlpha")} />
+                      </>
+                    )}
+                    {f && <span className="text-[var(--color-teal2)]">{t("posts.filtering", { n: view === "likes" ? likersSorted.length : commentsSorted.length })}</span>}
+                  </div>
 
-              {/* transparência: puxado vs contador do IG */}
-              {view === "likes" && likers && sel.like > likers.length && (
-                <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
-                  {t("posts.gapNote", { got: likers.length, count: sel.like })}
-                </p>
+                  {/* transparência: puxado vs contador do IG */}
+                  {view === "likes" && likers && sel.like > likers.length && (
+                    <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
+                      {t("posts.gapNote", { got: likers.length, count: sel.like })}
+                    </p>
+                  )}
+                  {view === "comments" && comments && sel.cmt > comments.length && (
+                    <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
+                      {t("posts.gapNoteC", { got: comments.length, count: sel.cmt })}
+                    </p>
+                  )}
+                </>
               )}
-              {view === "comments" && comments && sel.cmt > comments.length && (
+
+              {/* aba recompartilhou: nota honesta sobre o limite do IG */}
+              {view === "reshares" && (
                 <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
-                  {t("posts.gapNoteC", { got: comments.length, count: sel.cmt })}
+                  {t("posts.reshareNote")}
                 </p>
               )}
 
               <div className="selectable stagger max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
-                {view === "likes" ? (
+                {view === "reshares" ? (
+                  reLoading ? (
+                    <div className="space-y-2 p-1">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-9" />)}</div>
+                  ) : reshares && reshares.length > 0 ? (
+                    reshares.map((u) => <UserRow key={u.pk} u={u} />)
+                  ) : (
+                    <p className="p-3 text-[13px] text-[var(--color-slate)]">{t("posts.emptyReshares")}</p>
+                  )
+                ) : view === "likes" ? (
                   likersSorted.length > 0 ? (
                     likersSorted.map((u) => <UserRow key={u.pk} u={u} />)
                   ) : (
@@ -480,7 +492,67 @@ export default function Posts() {
         </div>
       )}
 
-      <CapturePanel t={t} />
+      {/* relatorio unificado DENTRO do app (sem baixar; PDF vira botao) */}
+      {uniData && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setUniData(null)}>
+          <div className="pop flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-5 py-4">
+              <div>
+                <div className="text-[15px] font-bold">{t("posts.uniTitle", { n: uniData.posts.length })}</div>
+                <div className="text-[12px] text-[var(--color-slate)]">{t("posts.uniSub", { people: uniData.rows.length, likes: uniData.totLikes, cmts: uniData.totCmts, posts: uniData.posts.length })}</div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button onClick={downloadUnifiedPdf} disabled={saving} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">{t("posts.exportPdf")}</button>
+                <button onClick={() => setUniData(null)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("posts.close")}</button>
+              </div>
+            </div>
+            {/* legenda dos posts */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-[var(--color-line)] px-5 py-2 text-[11px] text-[var(--color-slate)]">
+              {uniData.posts.map((p, i) => (
+                <span key={i}><b className="text-[var(--color-teal2)]">{p.label}</b> <span className="pii">{p.sub}</span></span>
+              ))}
+            </div>
+            {/* tabela */}
+            <div className="selectable overflow-auto px-2 py-2">
+              <table className="w-full border-collapse text-[12px]">
+                <thead className="sticky top-0 bg-[var(--color-panel)]">
+                  <tr className="text-left text-[var(--color-slate)]">
+                    <th className="px-2 py-1.5">#</th>
+                    <th className="px-2 py-1.5">{t("posts.colUser")}</th>
+                    <th className="px-2 py-1.5">{t("posts.colName")}</th>
+                    <th className="px-2 py-1.5">{t("posts.colLiked")}</th>
+                    <th className="px-2 py-1.5">{t("posts.colCommented")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uniData.rows.map((r, i) => (
+                    <tr key={r.username + i} className="border-t border-[var(--color-line)] align-top hover:bg-white/5">
+                      <td className="px-2 py-1.5 tabular-nums text-[var(--color-slate)]">{i + 1}</td>
+                      <td className="px-2 py-1.5">
+                        <a href={`https://instagram.com/${r.username}`} target="_blank" rel="noreferrer" className="font-semibold pii">@{r.username}</a>
+                        {r.verif ? <span className="ml-1 text-[var(--color-teal)]">✓</span> : null}
+                      </td>
+                      <td className="px-2 py-1.5 pii">{r.full || "-"}</td>
+                      <td className="px-2 py-1.5">
+                        {r.liked.length ? r.liked.map((idx) => <span key={idx} className="mr-1 inline-block rounded bg-[#0e2a24] px-1.5 py-0.5 text-[10.5px] text-[var(--color-teal2)]">{uniData.posts[idx]?.label}</span>) : <span className="text-[var(--color-slate)]">-</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {r.commented.length ? (
+                          <ul className="space-y-0.5">
+                            {r.commented.map((c, k) => (
+                              <li key={k}><b className="text-[var(--color-teal2)]">{uniData.posts[c.post]?.label}</b> <span className="pii text-[var(--color-slate)]">{c.text || t("posts.noText")}</span></li>
+                            ))}
+                          </ul>
+                        ) : <span className="text-[var(--color-slate)]">-</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
