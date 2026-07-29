@@ -52,10 +52,64 @@ body {
 @keyframes auroraPan { 0%,100% { transform: translate3d(-3%,-2%,0) scale(1.05); } 50% { transform: translate3d(3%,3%,0) scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .aurora { animation: none; } }
 
-::-webkit-scrollbar { width: 9px; }
-::-webkit-scrollbar-thumb { background: #1c2636; border-radius: 8px; }
+/* ---- tira cara de NAVEGADOR: sem seleção de texto no chrome, sem cursor de texto,
+       sem drag de imagem, sem highlight de toque, scrollbar discreta (app nativo) ---- */
+body { cursor: default; -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"], .selectable, .selectable * {
+  -webkit-user-select: text; user-select: text; cursor: text;
+}
+button, a, [role="button"], summary, label { cursor: pointer; }
+button:disabled { cursor: default; }
+img, svg, canvas { -webkit-user-drag: none; user-select: none; }
+* { -webkit-tap-highlight-color: transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1b2536; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #2a3850; background-clip: padding-box; }
 ::selection { background: var(--color-teal); color: var(--color-void); }
 
 /* a11y: foco visível (WCAG 2.2) — teclado sempre enxerga onde está */
+:focus { outline: none; }
 :focus-visible { outline: 2px solid var(--color-teal); outline-offset: 2px; border-radius: 4px; }
-button, a, input, select { outline-color: var(--color-teal); }
+
+/* ================= MOTION (nada de abertura brusca / carregamento grosseiro) ================= */
+@keyframes fadeRise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.985) translateY(7px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shimmer { 0% { background-position: -520px 0; } 100% { background-position: 520px 0; } }
+
+.screen-in { animation: fadeRise .36s cubic-bezier(.22,.61,.36,1) both; }
+.enter { animation: fadeRise .32s cubic-bezier(.22,.61,.36,1) both; }
+.pop { animation: popIn .3s cubic-bezier(.22,.61,.36,1) both; }
+.fade-img { animation: fadeIn .45s ease both; }
+
+/* stagger: primeiros itens entram em cascata; resto entra junto (lista longa não atrasa) */
+.stagger > * { animation: fadeRise .34s cubic-bezier(.22,.61,.36,1) both; }
+.stagger > *:nth-child(1){animation-delay:.02s}
+.stagger > *:nth-child(2){animation-delay:.05s}
+.stagger > *:nth-child(3){animation-delay:.08s}
+.stagger > *:nth-child(4){animation-delay:.11s}
+.stagger > *:nth-child(5){animation-delay:.14s}
+.stagger > *:nth-child(6){animation-delay:.17s}
+.stagger > *:nth-child(7){animation-delay:.20s}
+.stagger > *:nth-child(8){animation-delay:.23s}
+.stagger > *:nth-child(9){animation-delay:.26s}
+.stagger > *:nth-child(10){animation-delay:.29s}
+.stagger > *:nth-child(n+11){animation-delay:.31s}
+
+/* skeleton shimmer (loading suave em vez de texto seco) */
+.skel {
+  background: linear-gradient(90deg, #121a28 25%, #1b2740 37%, #121a28 63%);
+  background-size: 900px 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 10px;
+}
+
+/* transições suaves padrão em elementos interativos */
+button, a, .tap { transition: background-color .18s ease, color .18s ease, border-color .18s ease, transform .12s ease, box-shadow .2s ease, filter .18s ease; }
+button:active, .tap:active { transform: translateY(1px) scale(.995); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-in, .enter, .pop, .fade-img, .stagger > *, .skel, .aurora { animation: none !important; }
+  * { transition-duration: .001s !important; }
+}

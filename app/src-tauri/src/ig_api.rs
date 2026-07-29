@@ -522,6 +522,35 @@ pub async fn comments(
     Ok(out)
 }
 
+/// Contagem AO VIVO de um post (like/comment/reshare/save) — o feed traz numero cacheado,
+/// isso busca o atual (posts ganham interacao depois). /media/{id}/info/.
+#[derive(serde::Serialize)]
+pub struct MediaCounts {
+    pub like: i64,
+    pub cmt: i64,
+    pub reshares: i64,
+    pub saves: i64,
+}
+
+pub async fn media_info(
+    app: &tauri::AppHandle,
+    s: &Session,
+    media_id: &str,
+) -> Result<MediaCounts, String> {
+    if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
+        return Err("media_id invalido".into());
+    }
+    let url = format!("https://www.instagram.com/api/v1/media/{media_id}/info/");
+    let j = webview_fetch(app, &url, false, &s.csrf).await?;
+    let it = &j["items"][0];
+    Ok(MediaCounts {
+        like: it["like_count"].as_i64().unwrap_or(-1),
+        cmt: it["comment_count"].as_i64().unwrap_or(-1),
+        reshares: it["reshare_count"].as_i64().or_else(|| it["share_count"].as_i64()).unwrap_or(-1),
+        saves: it["save_count"].as_i64().or_else(|| it["saved_count"].as_i64()).unwrap_or(-1),
+    })
+}
+
 /// Perfil público por username (web_profile_info) → devolve o JSON do user (id, contagens).
 pub async fn profile(
     app: &tauri::AppHandle,

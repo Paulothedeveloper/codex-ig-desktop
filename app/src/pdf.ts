@@ -117,8 +117,8 @@ export function exportInteractionsPdf(opts: {
   return new Uint8Array(doc.output("arraybuffer"));
 }
 
-// ---- Relatorio UNIFICADO: varios posts -> 1 PDF, 1 linha por pessoa (dedup), com quais posts curtiu ----
-type UnifiedRow = { username: string; full: string; verif: boolean; posts: string[] };
+// ---- Relatorio UNIFICADO: varios posts -> 1 PDF, 1 linha por pessoa (dedup), curtidas + comentarios ----
+type UnifiedRow = { username: string; full: string; verif: boolean; liked: string[]; commented: string[] };
 
 export function exportUnifiedPdf(opts: {
   title: string;
@@ -126,8 +126,8 @@ export function exportUnifiedPdf(opts: {
   rows: UnifiedRow[];
   colUser: string;
   colName: string;
-  colPosts: string;
-  colCount: string;
+  colLiked: string;
+  colCommented: string;
   footer: string;
 }): Uint8Array {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -173,20 +173,21 @@ export function exportUnifiedPdf(opts: {
   };
   const vtag = (v: boolean) => (v ? " (verif.)" : "");
 
+  const cell = (arr: string[]) => (arr.length ? `${arr.length} · ${clean(arr.join(", "))}` : "-");
   autoTable(doc, {
     startY: y,
-    head: [["#", clean(opts.colUser), clean(opts.colName), clean(opts.colCount), clean(opts.colPosts)]],
+    head: [["#", clean(opts.colUser), clean(opts.colName), clean(opts.colLiked), clean(opts.colCommented)]],
     body: opts.rows.map((r, i) => [
       String(i + 1),
       "@" + clean(r.username) + vtag(r.verif),
       clean(r.full) || "-",
-      String(r.posts.length),
-      clean(r.posts.join(", ")),
+      cell(r.liked),
+      cell(r.commented),
     ]),
     headStyles: { fillColor: TEAL_HEAD, textColor: [255, 255, 255], fontStyle: "bold" },
     styles: { fontSize: 8, cellPadding: 3, textColor: DARK, overflow: "linebreak" },
     alternateRowStyles: { fillColor: [244, 247, 246] },
-    columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 120 }, 3: { cellWidth: 34, halign: "center" } },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 108 }, 2: { cellWidth: 120 } },
     margin: { left: 40, right: 40, top: 60 },
     didDrawPage: () => foot(doc),
   });

@@ -163,35 +163,44 @@ export default function Posts() {
     });
   }
 
-  // relatorio UNIFICADO: puxa likers de cada post escolhido, junta por pessoa (dedup) com quais posts curtiu
+  // relatorio UNIFICADO: puxa CURTIDAS + COMENTARIOS de cada post, junta por pessoa (dedup),
+  // mostrando quais posts ela curtiu e quais comentou.
   async function exportUnified() {
     const chosen = pickIds.map((id) => picks[id]);
     if (chosen.length < 2) return;
     setUni({ on: true, done: 0, total: chosen.length });
-    const map = new Map<string, { u: IgUser; posts: string[] }>();
+    const map = new Map<string, { u: IgUser; liked: string[]; commented: string[] }>();
+    const ensure = (u: IgUser) => {
+      let e = map.get(u.pk);
+      if (!e) { e = { u, liked: [], commented: [] }; map.set(u.pk, e); }
+      return e;
+    };
+    let totLikes = 0, totCmts = 0;
     try {
       for (let i = 0; i < chosen.length; i++) {
         const p = chosen[i];
-        const lk = await invoke<IgUser[]>("ig_likers", { mediaId: p.id });
         const label = p.code || dt(p.taken_at);
-        for (const u of lk) {
-          const e = map.get(u.pk);
-          if (e) { if (!e.posts.includes(label)) e.posts.push(label); }
-          else map.set(u.pk, { u, posts: [label] });
-        }
+        const [lk, cm] = await Promise.all([
+          invoke<IgUser[]>("ig_likers", { mediaId: p.id }),
+          invoke<Comment[]>("ig_comments", { mediaId: p.id }),
+        ]);
+        totLikes += lk.length;
+        totCmts += cm.length;
+        for (const u of lk) { const e = ensure(u); if (!e.liked.includes(label)) e.liked.push(label); }
+        for (const c of cm) { const e = ensure(c.user); if (!e.commented.includes(label)) e.commented.push(label); }
         setUni({ on: true, done: i + 1, total: chosen.length });
       }
       const rows = [...map.values()]
-        .sort((a, b) => a.u.username.localeCompare(b.u.username))
-        .map((e) => ({ username: e.u.username, full: e.u.full, verif: e.u.verif, posts: e.posts }));
+        .sort((a, b) => (b.liked.length + b.commented.length) - (a.liked.length + a.commented.length) || a.u.username.localeCompare(b.u.username))
+        .map((e) => ({ username: e.u.username, full: e.u.full, verif: e.u.verif, liked: e.liked, commented: e.commented }));
       const bytes = exportUnifiedPdf({
         title: t("posts.uniTitle", { n: chosen.length }),
-        subtitle: t("posts.uniSub", { people: rows.length, posts: chosen.length, date: new Date().toLocaleString(loc) }),
+        subtitle: t("posts.uniSub", { people: rows.length, likes: totLikes, cmts: totCmts, posts: chosen.length }),
         rows,
         colUser: t("posts.colUser"),
         colName: t("posts.colName"),
-        colPosts: t("posts.colPosts"),
-        colCount: t("posts.colCount"),
+        colLiked: t("posts.colLiked"),
+        colCommented: t("posts.colCommented"),
         footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
       });
       await saveBytes(bytes, `codexig-unificado-${chosen.length}posts.pdf`, "PDF", "pdf");
@@ -208,8 +217,13 @@ export default function Posts() {
     setComments(null);
     setDErr("");
     setView("likes");
+    setFilter("");
     setDLoading(true);
     try {
+      // contagem AO VIVO (o feed traz numero cacheado; posts ganham interacao depois)
+      invoke<{ like: number; cmt: number; reshares: number; saves: number }>("ig_media_info", { mediaId: p.id })
+        .then((mc) => setSel((cur) => (cur && cur.id === p.id ? { ...cur, like: mc.like >= 0 ? mc.like : cur.like, cmt: mc.cmt >= 0 ? mc.cmt : cur.cmt, reshares: mc.reshares, saves: mc.saves } : cur)))
+        .catch(() => {});
       const [lk, cm] = await Promise.all([
         invoke<IgUser[]>("ig_likers", { mediaId: p.id }),
         invoke<Comment[]>("ig_comments", { mediaId: p.id }),
@@ -275,7 +289,15 @@ export default function Posts() {
       </div>
     );
   }
-  if (loading) return <div className="text-sm text-[var(--color-slate)]">{t("posts.loading")}</div>;
+  if (loading)
+    return (
+      <div className="space-y-3">
+        <div className="skel h-3 w-40" />
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, i) => <div key={i} className="skel aspect-square" />)}
+        </div>
+      </div>
+    );
   if (err) return <SessionError err={err} onRetry={loadPosts} failedKey="posts.failed" />;
 
   return (
@@ -286,18 +308,18 @@ export default function Posts() {
           <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.pick")}</span>
           <button onClick={loadPosts} className="text-[12px] font-bold text-[var(--color-teal)]">{t("posts.reload")}</button>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <div className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4">
           {posts!.map((p) => {
             const on = sel?.id === p.id;
             const picked = !!picks[p.id];
             return (
               <div
                 key={p.id}
-                className={"group relative aspect-square overflow-hidden rounded-lg border transition " + (on ? "border-[var(--color-teal)] ring-2 ring-[var(--color-teal)]/40" : picked ? "border-[var(--color-teal2)]" : "border-[var(--color-line)] hover:border-[var(--color-steel)]")}
+                className={"group relative aspect-square overflow-hidden rounded-lg border transition hover:-translate-y-0.5 " + (on ? "border-[var(--color-teal)] ring-2 ring-[var(--color-teal)]/40" : picked ? "border-[var(--color-teal2)]" : "border-[var(--color-line)] hover:border-[var(--color-steel)]")}
               >
                 <button onClick={() => open(p)} className="absolute inset-0 h-full w-full">
                   {p.thumb ? (
-                    <img src={p.thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <img src={p.thumb} alt="" className="fade-img h-full w-full object-cover" loading="lazy" />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-[#0a0e15] text-[10px] text-[var(--color-slate)]">{t("posts.noCover")}</div>
                   )}
@@ -348,7 +370,7 @@ export default function Posts() {
 
       {/* detalhe do post selecionado */}
       {sel && (
-        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div key={sel.id} className="pop rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-[14px] font-bold pii">{sel.caption || t("posts.noCaption")}</div>
@@ -375,7 +397,11 @@ export default function Posts() {
           {dErr ? (
             <div className="mt-4"><SessionError err={dErr} onRetry={() => open(sel)} failedKey="posts.failed" /></div>
           ) : dLoading ? (
-            <div className="mt-4 text-sm text-[var(--color-slate)]">{t("posts.pulling")}</div>
+            <div className="mt-4 space-y-2">
+              <div className="skel h-8 w-52" />
+              {Array.from({ length: 7 }).map((_, i) => <div key={i} className="skel h-9" />)}
+              <p className="pt-1 text-[12px] text-[var(--color-slate)]">{t("posts.pulling")}</p>
+            </div>
           ) : (
             <div className="mt-4">
               <div className="mb-2 flex gap-2">
@@ -424,7 +450,7 @@ export default function Posts() {
                 </p>
               )}
 
-              <div className="max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
+              <div className="selectable stagger max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
                 {view === "likes" ? (
                   likersSorted.length > 0 ? (
                     likersSorted.map((u) => <UserRow key={u.pk} u={u} />)
