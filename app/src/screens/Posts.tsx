@@ -1,8 +1,16 @@
 import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
 import { exportInteractionsPdf } from "../pdf";
+
+// Tauri não faz download de browser — salva via diálogo nativo + escrita no Rust.
+async function saveBytes(bytes: Uint8Array, defaultName: string, filterName: string, ext: string) {
+  const path = await save({ defaultPath: defaultName, filters: [{ name: filterName, extensions: [ext] }] });
+  if (!path) return; // usuário cancelou
+  await invoke("write_bytes", { path, bytes: Array.from(bytes) });
+}
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Post = { id: string; code: string; thumb: string; like: number; cmt: number; views: number; taken_at: number; caption: string };
@@ -137,23 +145,22 @@ export default function Posts() {
   const dt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString(loc, { day: "2-digit", month: "short", year: "2-digit" }) : "");
   const dtt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleString(loc, { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 
-  function exportCsv() {
+  const [saving, setSaving] = useState(false);
+
+  async function exportCsv() {
     if (!sel) return;
     const rows: string[] = ["tipo,usuario,nome,quando,texto"];
     const esc = (s: string) => `"${(s || "").replace(/"/g, '""')}"`;
     likersSorted.forEach((u) => rows.push(["curtiu", "@" + u.username, u.full, "", ""].map(esc).join(",")));
     commentsSorted.forEach((c) => rows.push(["comentou", "@" + c.user.username, c.user.full, dtt(c.created_at), c.text].map(esc).join(",")));
-    const blob = new Blob(["﻿" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `codexig-post-${sel.code}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const bytes = new TextEncoder().encode("﻿" + rows.join("\r\n")); // BOM + CRLF pro Excel
+    setSaving(true);
+    try { await saveBytes(bytes, `codexig-post-${sel.code}.csv`, "CSV", "csv"); } catch (e) { setDErr(String(e)); } finally { setSaving(false); }
   }
 
-  function exportPdf() {
+  async function exportPdf() {
     if (!sel) return;
-    exportInteractionsPdf({
+    const bytes = exportInteractionsPdf({
       title: sel.caption || t("posts.noCaption"),
       subtitle: `${dt(sel.taken_at)}  ·  ${sel.like} ${t("posts.likes")}  ·  ${sel.cmt} ${t("posts.comments")}`,
       likersLabel: `${t("posts.whoLiked")} (${likersSorted.length})`,
@@ -165,8 +172,9 @@ export default function Posts() {
       colWhen: t("posts.colWhen"),
       colText: t("posts.colText"),
       footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
-      filename: `codexig-post-${sel.code}.pdf`,
     });
+    setSaving(true);
+    try { await saveBytes(bytes, `codexig-post-${sel.code}.pdf`, "PDF", "pdf"); } catch (e) { setDErr(String(e)); } finally { setSaving(false); }
   }
 
   // ----- estado inicial -----
@@ -230,10 +238,10 @@ export default function Posts() {
               <div className="mt-0.5 text-[12px] text-[var(--color-slate)]">{dt(sel.taken_at)} · {nf(sel.like)} {t("posts.likes")} · {nf(sel.cmt)} {t("posts.comments")}</div>
             </div>
             <div className="flex shrink-0 gap-2">
-              <button onClick={exportPdf} disabled={dLoading || (!likers && !comments)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">
+              <button onClick={exportPdf} disabled={dLoading || saving || (!likers && !comments)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">
                 {t("posts.exportPdf")}
               </button>
-              <button onClick={exportCsv} disabled={dLoading || (!likers && !comments)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)] disabled:opacity-40">
+              <button onClick={exportCsv} disabled={dLoading || saving || (!likers && !comments)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)] disabled:opacity-40">
                 {t("posts.export")}
               </button>
             </div>
