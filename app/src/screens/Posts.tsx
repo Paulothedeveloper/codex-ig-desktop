@@ -13,7 +13,7 @@ async function saveBytes(bytes: Uint8Array, defaultName: string, filterName: str
 }
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
-type Post = { id: string; code: string; thumb: string; like: number; cmt: number; views: number; taken_at: number; caption: string };
+type Post = { id: string; code: string; thumb: string; like: number; cmt: number; views: number; reshares: number; saves: number; taken_at: number; caption: string };
 type Comment = { user: IgUser; text: string; likes: number; created_at: number };
 
 function UserRow({ u }: { u: IgUser }) {
@@ -235,7 +235,7 @@ export default function Posts() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-[14px] font-bold pii">{sel.caption || t("posts.noCaption")}</div>
-              <div className="mt-0.5 text-[12px] text-[var(--color-slate)]">{dt(sel.taken_at)} · {nf(sel.like)} {t("posts.likes")} · {nf(sel.cmt)} {t("posts.comments")}</div>
+              <div className="mt-0.5 text-[12px] text-[var(--color-slate)]">{dt(sel.taken_at)} · {nf(sel.like)} {t("posts.likes")} · {nf(sel.cmt)} {t("posts.comments")}{sel.reshares >= 0 ? ` · ${nf(sel.reshares)} ${t("posts.shares")}` : ""}{sel.saves >= 0 ? ` · ${nf(sel.saves)} ${t("posts.saves")}` : ""}</div>
             </div>
             <div className="flex shrink-0 gap-2">
               <button onClick={exportPdf} disabled={dLoading || saving || (!likers && !comments)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">
@@ -294,7 +294,11 @@ export default function Posts() {
                   commentsSorted.map((c, i) => (
                     <div key={c.user.pk + i} className="rounded-lg px-2 py-1.5 hover:bg-white/5">
                       <div className="flex items-baseline justify-between gap-2">
-                        <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="truncate text-[13px] font-semibold pii">@{c.user.username}</a>
+                        <span className="flex min-w-0 items-baseline gap-1.5">
+                          <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="shrink-0 text-[13px] font-semibold pii">@{c.user.username}</a>
+                          {c.user.full ? <span className="truncate text-[12px] text-[var(--color-slate)] pii">· {c.user.full}</span> : null}
+                          {c.user.verif ? <span className="shrink-0 text-[11px] text-[var(--color-teal)]">✓</span> : null}
+                        </span>
                         <span className="shrink-0 text-[10.5px] text-[var(--color-slate)] tabular-nums">{dtt(c.created_at)}</span>
                       </div>
                       <p className="text-[12.5px] leading-snug text-[var(--color-slate)] pii">{c.text}</p>
