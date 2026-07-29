@@ -31,6 +31,13 @@ fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Escreve bytes num caminho (o JS pega o caminho via diálogo nativo de salvar). Tauri não faz
+/// download de browser (a.click/doc.save viram no-op) — export = save-dialog + escrita no Rust.
+#[tauri::command]
+fn write_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, &bytes).map_err(|e| format!("escrever {path}: {e}"))
+}
+
 /// Mostra/foca a janela do Instagram (recria se foi fechada).
 #[tauri::command]
 async fn focus_ig(app: tauri::AppHandle) -> Result<(), String> {
@@ -166,6 +173,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             SqlBuilder::default()
                 .add_migrations("sqlite:codexig.db", migrations)
@@ -197,6 +205,7 @@ pub fn run() {
             ig_raw_get,
             ig_destroy,
             ig_targets,
+            write_bytes,
             focus_ig
         ])
         .run(tauri::generate_context!())

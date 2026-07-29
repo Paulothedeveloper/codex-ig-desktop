@@ -23,8 +23,7 @@ export function exportInteractionsPdf(opts: {
   colWhen: string;
   colText: string;
   footer: string;
-  filename: string;
-}) {
+}): Uint8Array {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
 
@@ -105,5 +104,5 @@ export function exportInteractionsPdf(opts: {
     });
   }
 
-  doc.save(opts.filename);
+  return new Uint8Array(doc.output("arraybuffer"));
 }
