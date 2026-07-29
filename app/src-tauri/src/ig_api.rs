@@ -362,9 +362,34 @@ pub async fn likers(
     if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
         return Err("media_id invalido".into());
     }
-    let url = format!("https://www.instagram.com/api/v1/media/{media_id}/likers/");
-    let j = webview_fetch(app, &url, false, &s.csrf).await?;
-    Ok(parse_users(&j))
+    // pagina enquanto o IG der next_max_id (puxa o máximo — o counter conta mais do que a
+    // lista às vezes; ao menos garante que não paramos na 1ª página).
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut next = String::new();
+    for _ in 0..40 {
+        let url = if next.is_empty() {
+            format!("https://www.instagram.com/api/v1/media/{media_id}/likers/")
+        } else {
+            format!("https://www.instagram.com/api/v1/media/{media_id}/likers/?max_id={next}")
+        };
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
+        for u in parse_users(&j) {
+            if seen.insert(u.pk.clone()) {
+                out.push(u);
+            }
+        }
+        next = j["next_max_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        if next.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+    }
+    Ok(out)
 }
 
 /// Quem COMENTOU um post (media_id), paginado + ritmado. Devolve user + texto do comentario.
@@ -376,11 +401,33 @@ pub async fn comments(
     if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
         return Err("media_id invalido".into());
     }
+    // parseia 1 objeto de comentario da API -> Comment (prefixa respostas p/ dar contexto)
+    let parse_comment = |c: &serde_json::Value, reply: bool| -> Comment {
+        let u = &c["user"];
+        let txt: String = c["text"].as_str().unwrap_or("").chars().take(280).collect();
+        Comment {
+            user: IgUser {
+                pk: u["pk"].as_str().map(String::from).unwrap_or_else(|| {
+                    u["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()
+                }),
+                username: u["username"].as_str().unwrap_or("").to_string(),
+                full: u["full_name"].as_str().unwrap_or("").to_string(),
+                is_private: u["is_private"].as_bool().unwrap_or(false),
+                is_verified: u["is_verified"].as_bool().unwrap_or(false),
+            },
+            text: if reply { format!("[resp] {txt}") } else { txt },
+            likes: c["comment_like_count"].as_i64().unwrap_or(0),
+            created_at: c["created_at"].as_i64().or_else(|| c["created_at_utc"].as_i64()).unwrap_or(0),
+        }
+    };
+
     let mut out = Vec::new();
+    let mut reply_pks: Vec<String> = Vec::new(); // comentarios pai que TEM respostas
     let mut next = String::new();
     for _ in 0..60 {
+        // threading=true -> a API devolve child_comment_count (senao nao da p/ saber quem tem resposta)
         let url = format!(
-            "https://www.instagram.com/api/v1/media/{media_id}/comments/?can_support_threading=false&permalink_enabled=false{}",
+            "https://www.instagram.com/api/v1/media/{media_id}/comments/?can_support_threading=true&permalink_enabled=false{}",
             if next.is_empty() {
                 String::new()
             } else {
@@ -390,21 +437,12 @@ pub async fn comments(
         let j = webview_fetch(app, &url, false, &s.csrf).await?;
         if let Some(arr) = j["comments"].as_array() {
             for c in arr {
-                let u = &c["user"];
-                out.push(Comment {
-                    user: IgUser {
-                        pk: u["pk"].as_str().map(String::from).unwrap_or_else(|| {
-                            u["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()
-                        }),
-                        username: u["username"].as_str().unwrap_or("").to_string(),
-                        full: u["full_name"].as_str().unwrap_or("").to_string(),
-                        is_private: u["is_private"].as_bool().unwrap_or(false),
-                        is_verified: u["is_verified"].as_bool().unwrap_or(false),
-                    },
-                    text: c["text"].as_str().unwrap_or("").chars().take(280).collect(),
-                    likes: c["comment_like_count"].as_i64().unwrap_or(0),
-                    created_at: c["created_at"].as_i64().or_else(|| c["created_at_utc"].as_i64()).unwrap_or(0),
-                });
+                out.push(parse_comment(c, false));
+                if c["child_comment_count"].as_i64().unwrap_or(0) > 0 {
+                    if let Some(pk) = c["pk"].as_str().map(String::from).or_else(|| c["pk"].as_i64().map(|n| n.to_string())) {
+                        reply_pks.push(pk);
+                    }
+                }
             }
         }
         next = j["next_min_id"]
@@ -417,6 +455,36 @@ pub async fn comments(
             break;
         }
         tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+    }
+
+    // busca as RESPOSTAS de cada comentario que tem filhos (fecha o gap do counter, que soma replies)
+    for pk in reply_pks.iter().take(60) {
+        let mut cnext = String::new();
+        for _ in 0..20 {
+            let url = format!(
+                "https://www.instagram.com/api/v1/media/{media_id}/comments/{pk}/child_comments/{}",
+                if cnext.is_empty() { String::new() } else { format!("?max_id={cnext}") }
+            );
+            let j = match webview_fetch(app, &url, false, &s.csrf).await {
+                Ok(v) => v,
+                Err(_) => break, // se um pai falhar, segue os outros
+            };
+            if let Some(arr) = j["child_comments"].as_array() {
+                for c in arr {
+                    out.push(parse_comment(c, true));
+                }
+            }
+            cnext = j["next_max_child_cursor"]
+                .as_str()
+                .map(String::from)
+                .or_else(|| j["next_max_id"].as_str().map(String::from))
+                .unwrap_or_default();
+            if cnext.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(jitter_ms(500))).await;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(500))).await;
     }
     Ok(out)
 }
