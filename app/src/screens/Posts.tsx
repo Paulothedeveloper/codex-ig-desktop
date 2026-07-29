@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
+import { exportInteractionsPdf } from "../pdf";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Post = { id: string; code: string; thumb: string; like: number; cmt: number; views: number; taken_at: number; caption: string };
-type Comment = { user: IgUser; text: string; likes: number };
+type Comment = { user: IgUser; text: string; likes: number; created_at: number };
 
 function UserRow({ u }: { u: IgUser }) {
   return (
@@ -19,6 +20,17 @@ function UserRow({ u }: { u: IgUser }) {
       {u.full ? <span className="truncate text-[12px] text-[var(--color-slate)] pii">· {u.full}</span> : null}
       {u.verif ? <span className="text-[var(--color-teal)] text-[11px]">✓</span> : null}
     </a>
+  );
+}
+
+function SortBtn({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={"rounded-md px-2.5 py-1 font-bold transition " + (on ? "bg-[var(--color-teal)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)] hover:text-[var(--color-paper)]")}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -74,6 +86,19 @@ export default function Posts() {
   const [dLoading, setDLoading] = useState(false);
   const [dErr, setDErr] = useState("");
   const [view, setView] = useState<"likes" | "comments">("likes");
+  const [sortL, setSortL] = useState<"recencia" | "alpha">("recencia");
+  const [sortC, setSortC] = useState<"data" | "alpha">("data");
+
+  const likersSorted = useMemo(() => {
+    if (!likers) return [];
+    return sortL === "alpha" ? [...likers].sort((a, b) => a.username.localeCompare(b.username)) : likers;
+  }, [likers, sortL]);
+  const commentsSorted = useMemo(() => {
+    if (!comments) return [];
+    return sortC === "alpha"
+      ? [...comments].sort((a, b) => a.user.username.localeCompare(b.user.username))
+      : [...comments].sort((a, b) => b.created_at - a.created_at);
+  }, [comments, sortC]);
 
   async function loadPosts() {
     setLoading(true);
@@ -109,13 +134,16 @@ export default function Posts() {
     }
   }
 
+  const dt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString(loc, { day: "2-digit", month: "short", year: "2-digit" }) : "");
+  const dtt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleString(loc, { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+
   function exportCsv() {
     if (!sel) return;
-    const rows: string[] = ["tipo,usuario,nome,texto"];
+    const rows: string[] = ["tipo,usuario,nome,quando,texto"];
     const esc = (s: string) => `"${(s || "").replace(/"/g, '""')}"`;
-    (likers || []).forEach((u) => rows.push(["curtiu", "@" + u.username, u.full, ""].map(esc).join(",")));
-    (comments || []).forEach((c) => rows.push(["comentou", "@" + c.user.username, c.user.full, c.text].map(esc).join(",")));
-    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    likersSorted.forEach((u) => rows.push(["curtiu", "@" + u.username, u.full, "", ""].map(esc).join(",")));
+    commentsSorted.forEach((c) => rows.push(["comentou", "@" + c.user.username, c.user.full, dtt(c.created_at), c.text].map(esc).join(",")));
+    const blob = new Blob(["﻿" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `codexig-post-${sel.code}.csv`;
@@ -123,7 +151,23 @@ export default function Posts() {
     URL.revokeObjectURL(a.href);
   }
 
-  const dt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString(loc, { day: "2-digit", month: "short", year: "2-digit" }) : "");
+  function exportPdf() {
+    if (!sel) return;
+    exportInteractionsPdf({
+      title: sel.caption || t("posts.noCaption"),
+      subtitle: `${dt(sel.taken_at)}  ·  ${sel.like} ${t("posts.likes")}  ·  ${sel.cmt} ${t("posts.comments")}`,
+      likersLabel: `${t("posts.whoLiked")} (${likersSorted.length})`,
+      commentsLabel: `${t("posts.whoCommented")} (${commentsSorted.length})`,
+      likers: likersSorted.map((u) => ({ username: u.username, full: u.full, verif: u.verif })),
+      comments: commentsSorted.map((c) => ({ username: c.user.username, full: c.user.full, text: c.text, when: dtt(c.created_at), verif: c.user.verif })),
+      colUser: t("posts.colUser"),
+      colName: t("posts.colName"),
+      colWhen: t("posts.colWhen"),
+      colText: t("posts.colText"),
+      footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
+      filename: `codexig-post-${sel.code}.pdf`,
+    });
+  }
 
   // ----- estado inicial -----
   if (!posts && !loading && !err) {
@@ -185,9 +229,14 @@ export default function Posts() {
               <div className="truncate text-[14px] font-bold pii">{sel.caption || t("posts.noCaption")}</div>
               <div className="mt-0.5 text-[12px] text-[var(--color-slate)]">{dt(sel.taken_at)} · {nf(sel.like)} {t("posts.likes")} · {nf(sel.cmt)} {t("posts.comments")}</div>
             </div>
-            <button onClick={exportCsv} disabled={dLoading || (!likers && !comments)} className="shrink-0 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)] disabled:opacity-40">
-              {t("posts.export")}
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button onClick={exportPdf} disabled={dLoading || (!likers && !comments)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">
+                {t("posts.exportPdf")}
+              </button>
+              <button onClick={exportCsv} disabled={dLoading || (!likers && !comments)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)] disabled:opacity-40">
+                {t("posts.export")}
+              </button>
+            </div>
           </div>
 
           {/* aviso honesto sobre compartilhar */}
@@ -210,17 +259,36 @@ export default function Posts() {
                 </button>
               </div>
 
-              <div className="max-h-[46vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
+              {/* ordenação */}
+              <div className="mb-2 flex items-center gap-2 text-[11.5px]">
+                <span className="text-[var(--color-slate)]">{t("posts.sortBy")}:</span>
                 {view === "likes" ? (
-                  likers && likers.length > 0 ? (
-                    likers.map((u) => <UserRow key={u.pk} u={u} />)
+                  <>
+                    <SortBtn on={sortL === "recencia"} onClick={() => setSortL("recencia")} label={t("posts.sortRecent")} />
+                    <SortBtn on={sortL === "alpha"} onClick={() => setSortL("alpha")} label={t("posts.sortAlpha")} />
+                  </>
+                ) : (
+                  <>
+                    <SortBtn on={sortC === "data"} onClick={() => setSortC("data")} label={t("posts.sortDate")} />
+                    <SortBtn on={sortC === "alpha"} onClick={() => setSortC("alpha")} label={t("posts.sortAlpha")} />
+                  </>
+                )}
+              </div>
+
+              <div className="max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
+                {view === "likes" ? (
+                  likersSorted.length > 0 ? (
+                    likersSorted.map((u) => <UserRow key={u.pk} u={u} />)
                   ) : (
                     <p className="p-3 text-[13px] text-[var(--color-slate)]">{t("posts.emptyLikes")}</p>
                   )
-                ) : comments && comments.length > 0 ? (
-                  comments.map((c, i) => (
+                ) : commentsSorted.length > 0 ? (
+                  commentsSorted.map((c, i) => (
                     <div key={c.user.pk + i} className="rounded-lg px-2 py-1.5 hover:bg-white/5">
-                      <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="text-[13px] font-semibold pii">@{c.user.username}</a>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="truncate text-[13px] font-semibold pii">@{c.user.username}</a>
+                        <span className="shrink-0 text-[10.5px] text-[var(--color-slate)] tabular-nums">{dtt(c.created_at)}</span>
+                      </div>
                       <p className="text-[12.5px] leading-snug text-[var(--color-slate)] pii">{c.text}</p>
                     </div>
                   ))
