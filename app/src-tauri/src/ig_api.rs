@@ -61,12 +61,21 @@ pub struct IgUser {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Post {
-    pub code: String,
+    pub id: String,    // media_id (pra puxar likers/comments)
+    pub code: String,  // shortcode (link do post)
+    pub thumb: String, // url da miniatura
     pub like: i64,
     pub cmt: i64,
     pub views: i64,
     pub taken_at: i64,
     pub caption: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Comment {
+    pub user: IgUser,
+    pub text: String,
+    pub likes: i64,
 }
 
 /// Le ds_user_id + csrftoken (nao-httpOnly) da webview so pra montar URL+header. A AUTENTICACAO
@@ -233,7 +242,20 @@ pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec
         .map(|a| {
             a.iter()
                 .map(|it| Post {
+                    id: it["id"].as_str().unwrap_or("").to_string(),
                     code: it["code"].as_str().unwrap_or("").to_string(),
+                    thumb: it["image_versions2"]["candidates"]
+                        .as_array()
+                        .and_then(|c| c.last())
+                        .and_then(|c| c["url"].as_str())
+                        .or_else(|| {
+                            it["carousel_media"][0]["image_versions2"]["candidates"]
+                                .as_array()
+                                .and_then(|c| c.last())
+                                .and_then(|c| c["url"].as_str())
+                        })
+                        .unwrap_or("")
+                        .to_string(),
                     like: it["like_count"].as_i64().unwrap_or(0),
                     cmt: it["comment_count"].as_i64().unwrap_or(0),
                     views: it["play_count"]
@@ -251,6 +273,74 @@ pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec
                 .collect()
         })
         .unwrap_or_default())
+}
+
+/// Quem CURTIU um post (media_id). Endpoint da API interna — para posts do dono da sessao,
+/// devolve a lista completa de likers (nao paginado; o IG limita a ~alguns milhares).
+pub async fn likers(
+    app: &tauri::AppHandle,
+    s: &Session,
+    media_id: &str,
+) -> Result<Vec<IgUser>, String> {
+    if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
+        return Err("media_id invalido".into());
+    }
+    let url = format!("https://www.instagram.com/api/v1/media/{media_id}/likers/");
+    let j = webview_fetch(app, &url, false, &s.csrf).await?;
+    Ok(parse_users(&j))
+}
+
+/// Quem COMENTOU um post (media_id), paginado + ritmado. Devolve user + texto do comentario.
+pub async fn comments(
+    app: &tauri::AppHandle,
+    s: &Session,
+    media_id: &str,
+) -> Result<Vec<Comment>, String> {
+    if media_id.is_empty() || !media_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
+        return Err("media_id invalido".into());
+    }
+    let mut out = Vec::new();
+    let mut next = String::new();
+    for _ in 0..60 {
+        let url = format!(
+            "https://www.instagram.com/api/v1/media/{media_id}/comments/?can_support_threading=false&permalink_enabled=false{}",
+            if next.is_empty() {
+                String::new()
+            } else {
+                format!("&min_id={next}")
+            }
+        );
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
+        if let Some(arr) = j["comments"].as_array() {
+            for c in arr {
+                let u = &c["user"];
+                out.push(Comment {
+                    user: IgUser {
+                        pk: u["pk"].as_str().map(String::from).unwrap_or_else(|| {
+                            u["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()
+                        }),
+                        username: u["username"].as_str().unwrap_or("").to_string(),
+                        full: u["full_name"].as_str().unwrap_or("").to_string(),
+                        is_private: u["is_private"].as_bool().unwrap_or(false),
+                        is_verified: u["is_verified"].as_bool().unwrap_or(false),
+                    },
+                    text: c["text"].as_str().unwrap_or("").chars().take(280).collect(),
+                    likes: c["comment_like_count"].as_i64().unwrap_or(0),
+                });
+            }
+        }
+        next = j["next_min_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_min_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        let has_more = j["has_more_comments"].as_bool().unwrap_or(false);
+        if next.is_empty() || !has_more {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+    }
+    Ok(out)
 }
 
 /// Perfil público por username (web_profile_info) → devolve o JSON do user (id, contagens).
