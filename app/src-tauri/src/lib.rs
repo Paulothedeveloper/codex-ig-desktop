@@ -86,6 +86,25 @@ async fn ig_comments(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_a
     ig_api::comments(&app, &s, &media_id).await
 }
 
+/// MODO CAPTURA: liga o sniffer na janela do IG (loga /api/v1 que a feature dispara).
+#[tauri::command]
+async fn ig_capture_start(app: tauri::AppHandle) -> Result<(), String> {
+    ig_api::capture_start(&app)
+}
+#[tauri::command]
+fn ig_capture_get() -> Vec<serde_json::Value> {
+    ig_api::capture_get()
+}
+#[tauri::command]
+fn ig_capture_clear() {
+    ig_api::capture_clear();
+}
+/// Testa um endpoint /api/v1 descoberto na captura (reshares/reposts) — devolve o JSON cru.
+#[tauri::command]
+async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Value, String> {
+    ig_api::raw_get(&app, &url).await
+}
+
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
 #[tauri::command]
 async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
@@ -162,6 +181,7 @@ pub fn run() {
     builder
         .setup(|app| {
             ig_api::install_ig_listener(app.handle());
+            ig_api::install_capture_listener(app.handle());
             open_ig(app.handle())?;
             Ok(())
         })
@@ -171,6 +191,10 @@ pub fn run() {
             ig_feed,
             ig_likers,
             ig_comments,
+            ig_capture_start,
+            ig_capture_get,
+            ig_capture_clear,
+            ig_raw_get,
             ig_destroy,
             ig_targets,
             focus_ig

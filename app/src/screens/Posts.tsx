@@ -22,6 +22,46 @@ function UserRow({ u }: { u: IgUser }) {
   );
 }
 
+function CapturePanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }) {
+  const [on, setOn] = useState(false);
+  const [list, setList] = useState<{ url: string; method: string; hot: boolean }[]>([]);
+  const [out, setOut] = useState("");
+  async function start() {
+    try { await invoke("ig_capture_start"); setOn(true); setOut(""); } catch (e) { setOut(String(e)); }
+  }
+  async function show() { setList(await invoke<{ url: string; method: string; hot: boolean }[]>("ig_capture_get")); }
+  async function clear() { await invoke("ig_capture_clear"); setList([]); }
+  async function tryit(u: string) {
+    setOut(t("capture.testing"));
+    try { setOut(JSON.stringify(await invoke("ig_raw_get", { url: u }), null, 1).slice(0, 6000)); }
+    catch (e) { setOut(String(e)); }
+  }
+  return (
+    <details className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
+      <summary className="cursor-pointer text-[13px] font-bold text-[var(--color-teal2)]">{t("capture.title")}</summary>
+      <p className="mt-2 text-[12px] leading-snug text-[var(--color-slate)]">{t("capture.hint")}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={start} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12.5px] font-bold text-[#04120f]">{on ? t("capture.on") : t("capture.start")}</button>
+        <button onClick={show} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("capture.show")}</button>
+        <button onClick={clear} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] text-[var(--color-slate)]">{t("capture.clear")}</button>
+      </div>
+      <div className="mt-3 max-h-[34vh] space-y-1 overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-2 font-mono text-[11px]">
+        {list.length === 0 ? (
+          <p className="text-[var(--color-slate)]">{t("capture.none")}</p>
+        ) : (
+          list.map((e, i) => (
+            <div key={i} className={"flex items-center justify-between gap-2 rounded px-1.5 py-1 " + (e.hot ? "bg-[#0e2a24] text-[var(--color-teal2)]" : "text-[var(--color-slate)]")}>
+              <span className="truncate">{e.hot ? "★ " : ""}{e.method} {e.url.replace("https://www.instagram.com", "")}</span>
+              <button onClick={() => tryit(e.url)} className="shrink-0 rounded border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-paper)]">{t("capture.test")}</button>
+            </div>
+          ))
+        )}
+      </div>
+      {out && <pre className="mt-2 max-h-[30vh] overflow-auto rounded-lg border border-[var(--color-line)] bg-[#05080d] p-2 text-[10.5px] text-[var(--color-ink)] whitespace-pre-wrap break-all">{out}</pre>}
+    </details>
+  );
+}
+
 export default function Posts() {
   const { t, nf, lang } = useI18n();
   const loc = LANGS.find((l) => l.code === lang)!.locale;
@@ -88,14 +128,17 @@ export default function Posts() {
   // ----- estado inicial -----
   if (!posts && !loading && !err) {
     return (
-      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-8 text-center">
-        <p className="mx-auto max-w-md text-sm text-[var(--color-slate)]">{t("posts.intro", { win: t("win.name") })}</p>
-        <button
-          onClick={loadPosts}
-          className="mt-4 rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99]"
-        >
-          {t("posts.load")}
-        </button>
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-8 text-center">
+          <p className="mx-auto max-w-md text-sm text-[var(--color-slate)]">{t("posts.intro", { win: t("win.name") })}</p>
+          <button
+            onClick={loadPosts}
+            className="mt-4 rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99]"
+          >
+            {t("posts.load")}
+          </button>
+        </div>
+        <CapturePanel t={t} />
       </div>
     );
   }
@@ -189,6 +232,8 @@ export default function Posts() {
           )}
         </div>
       )}
+
+      <CapturePanel t={t} />
     </div>
   );
 }

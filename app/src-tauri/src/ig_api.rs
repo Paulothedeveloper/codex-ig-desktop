@@ -33,6 +33,77 @@ pub fn install_ig_listener(app: &tauri::AppHandle) {
     });
 }
 
+/// MODO CAPTURA: guarda os endpoints /api/v1 que a janela do IG dispara (pra descobrir o
+/// endpoint real de reshares/reposts sem CHUTAR — o usuario usa a feature, o sniffer loga).
+fn captured() -> &'static Mutex<Vec<(String, String)>> {
+    static C: OnceLock<Mutex<Vec<(String, String)>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Listener do evento 'ig_endpoint' emitido pelo sniffer (url+method). Dedup. Chamar 1x no setup.
+pub fn install_capture_listener(app: &tauri::AppHandle) {
+    app.listen("ig_endpoint", |event| {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            let url = v["url"].as_str().unwrap_or("").to_string();
+            let method = v["method"].as_str().unwrap_or("GET").to_string();
+            if url.contains("/api/v1/") {
+                let mut c = captured().lock().unwrap();
+                if !c.iter().any(|(u, _)| u == &url) {
+                    c.push((url, method));
+                    if c.len() > 400 {
+                        c.remove(0);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Injeta o sniffer na janela 'ig' (patch em fetch + XHR -> emite 'ig_endpoint'). Idempotente.
+pub fn capture_start(app: &tauri::AppHandle) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("ig")
+        .ok_or(format!("{LOGIN} [janela IG fechada]"))?;
+    let js = r#"(()=>{if(window.__codexSniff)return;window.__codexSniff=true;
+const em=(u,m)=>{try{const s=String(u||'');if(s.indexOf('/api/v1/')>=0)window.__TAURI__.event.emit('ig_endpoint',{url:s,method:m||'GET'});}catch(e){}};
+const of=window.fetch;window.fetch=function(u,o){em((u&&u.url)||u,o&&o.method);return of.apply(this,arguments)};
+const oo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){em(u,m);return oo.apply(this,arguments)};})();"#;
+    wv.eval(js).map_err(|e| format!("eval: {e}"))?;
+    Ok(())
+}
+
+/// Devolve os endpoints capturados (mais recentes primeiro). Marca os "interessantes"
+/// (reshare/repost/resharer/share) pra o usuario achar rapido.
+pub fn capture_get() -> Vec<serde_json::Value> {
+    let c = captured().lock().unwrap();
+    c.iter()
+        .rev()
+        .map(|(url, method)| {
+            let low = url.to_lowercase();
+            let hot = low.contains("reshar") || low.contains("repost") || low.contains("resharer");
+            serde_json::json!({ "url": url, "method": method, "hot": hot })
+        })
+        .collect()
+}
+
+pub fn capture_clear() {
+    captured().lock().unwrap().clear();
+}
+
+/// Chamada CRUA a um endpoint /api/v1 arbitrario (descoberto na captura) — pra testar reshares/reposts
+/// depois de achar a URL. Valida que e do dominio do IG. Devolve o JSON.
+pub async fn raw_get(app: &tauri::AppHandle, path_or_url: &str) -> Result<serde_json::Value, String> {
+    let url = if path_or_url.starts_with("https://www.instagram.com/") {
+        path_or_url.to_string()
+    } else if path_or_url.starts_with("/api/v1/") {
+        format!("https://www.instagram.com{path_or_url}")
+    } else {
+        return Err("url invalida (precisa ser /api/v1/... do instagram.com)".into());
+    };
+    let s = session_from_webview(app).await?;
+    webview_fetch(app, &url, false, &s.csrf).await
+}
+
 /// Jitter derivado do relogio — evita intervalo fixo (mais fingerprintavel) nas leituras.
 fn jitter_ms(base: u64) -> u64 {
     let n = std::time::SystemTime::now()
