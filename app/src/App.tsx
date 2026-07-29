@@ -115,18 +115,20 @@ export default function App() {
       {/* main */}
       <main className="relative z-10 flex-1 overflow-auto">
         <header className="sticky top-0 z-10 backdrop-blur-sm bg-[var(--color-void)]/70 border-b border-[var(--color-line)] px-7 py-4">
-          <h1 className="text-xl font-bold tracking-tight">{active.label}</h1>
-          <p className="text-[13px] text-[var(--color-slate)]">{active.sub}</p>
+          <div key={tab} className="enter">
+            <h1 className="text-xl font-bold tracking-tight">{active.label}</h1>
+            <p className="text-[13px] text-[var(--color-slate)]">{active.sub}</p>
+          </div>
         </header>
 
         {/* telas ficam MONTADAS (só escondidas) — trocar de aba não desmonta:
             preserva o estado carregado e mantém o loop de unfollow rodando em 2º plano. */}
         <div className="p-7 max-w-4xl">
-          <div className={tab === "instagram" ? "" : "hidden"}><Instagram /></div>
-          <div className={tab === "report" ? "" : "hidden"}><Relatorio /></div>
-          <div className={tab === "posts" ? "" : "hidden"}><Posts /></div>
-          <div className={tab === "clicks" ? "" : "hidden"}><Cliques /></div>
-          <div className={tab === "config" ? "" : "hidden"}><Config /></div>
+          <div className={tab === "instagram" ? "screen-in" : "hidden"}><Instagram /></div>
+          <div className={tab === "report" ? "screen-in" : "hidden"}><Relatorio /></div>
+          <div className={tab === "posts" ? "screen-in" : "hidden"}><Posts /></div>
+          <div className={tab === "clicks" ? "screen-in" : "hidden"}><Cliques /></div>
+          <div className={tab === "config" ? "screen-in" : "hidden"}><Config /></div>
         </div>
       </main>
 

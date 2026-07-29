@@ -100,6 +100,13 @@ async fn ig_comments(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_a
     ig_api::comments(&app, &s, &media_id).await
 }
 
+/// Contagem AO VIVO de um post (like/comment/reshare/save atuais).
+#[tauri::command]
+async fn ig_media_info(app: tauri::AppHandle, media_id: String) -> Result<ig_api::MediaCounts, String> {
+    let s = sess(&app).await?;
+    ig_api::media_info(&app, &s, &media_id).await
+}
+
 /// MODO CAPTURA: liga o sniffer na janela do IG (loga /api/v1 que a feature dispara).
 #[tauri::command]
 async fn ig_capture_start(app: tauri::AppHandle) -> Result<(), String> {
@@ -207,6 +214,7 @@ pub fn run() {
             ig_feed_page,
             ig_likers,
             ig_comments,
+            ig_media_info,
             ig_capture_start,
             ig_capture_get,
             ig_capture_clear,
