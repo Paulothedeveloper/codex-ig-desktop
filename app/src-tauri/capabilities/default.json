@@ -10,6 +10,7 @@
     "opener:default",
     "sql:default",
     "dialog:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "dialog:allow-open"
   ]
 }

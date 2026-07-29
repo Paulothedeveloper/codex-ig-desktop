@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
+import MergePdf from "./MergePdf";
 import { exportInteractionsPdf, exportUnifiedPdf } from "../pdf";
 import type { UniPost, UniRow } from "../pdf";
 
@@ -73,6 +74,7 @@ export default function Posts() {
   const [uni, setUni] = useState<{ on: boolean; done: number; total: number }>({ on: false, done: 0, total: 0 });
   // relatorio unificado montado (visto DENTRO do app; PDF vira botao)
   const [uniData, setUniData] = useState<UniReport | null>(null);
+  const [uniSort, setUniSort] = useState<"inter" | "alpha">("inter");
 
   const f = norm(filter);
   const matchU = (u: IgUser) => !f || norm(u.username).includes(f) || norm(u.full).includes(f);
@@ -91,6 +93,14 @@ export default function Posts() {
   }, [comments, sortC, f]);
 
   const pickIds = Object.keys(picks);
+
+  // linhas do relatório unificado na ordem escolhida (alfabético por nome, ou por interação)
+  const uniRowsView = useMemo(() => {
+    if (!uniData) return [] as UniRow[];
+    if (uniSort === "alpha")
+      return [...uniData.rows].sort((a, b) => (a.full || a.username).toLowerCase().localeCompare((b.full || b.username).toLowerCase(), loc));
+    return uniData.rows;
+  }, [uniData, uniSort, loc]);
 
   async function loadPosts() {
     setLoading(true);
@@ -172,14 +182,20 @@ export default function Posts() {
     }
   }
 
-  // baixa o PDF do relatorio JA montado (botao dentro da tela)
+  // copia a lista simples (nome + @, na ordem atual, sem repetição)
+  async function copyUnifiedSimple() {
+    const txt = uniRowsView.map((r) => `${r.full || t("posts.noText")} — @${r.username}`).join("\n");
+    await navigator.clipboard.writeText(txt);
+  }
+
+  // baixa o PDF do relatorio JA montado (na ordem escolhida)
   async function downloadUnifiedPdf() {
     if (!uniData) return;
     const bytes = exportUnifiedPdf({
       title: t("posts.uniTitle", { n: uniData.posts.length }),
       subtitle: t("posts.uniSub", { people: uniData.rows.length, likes: uniData.totLikes, cmts: uniData.totCmts, posts: uniData.posts.length }),
       posts: uniData.posts,
-      rows: uniData.rows,
+      rows: uniRowsView,
       legendLabel: t("posts.legend"),
       colUser: t("posts.colUser"),
       colName: t("posts.colName"),
@@ -492,6 +508,9 @@ export default function Posts() {
         </div>
       )}
 
+      {/* Rota B: importar PDFs de fora e juntar em lista alfabética dedup */}
+      <MergePdf />
+
       {/* relatorio unificado DENTRO do app (sem baixar; PDF vira botao) */}
       {uniData && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setUniData(null)}>
@@ -501,7 +520,12 @@ export default function Posts() {
                 <div className="text-[15px] font-bold">{t("posts.uniTitle", { n: uniData.posts.length })}</div>
                 <div className="text-[12px] text-[var(--color-slate)]">{t("posts.uniSub", { people: uniData.rows.length, likes: uniData.totLikes, cmts: uniData.totCmts, posts: uniData.posts.length })}</div>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--color-line)] p-0.5">
+                  <SortBtn on={uniSort === "inter"} onClick={() => setUniSort("inter")} label={t("posts.uniByInter")} />
+                  <SortBtn on={uniSort === "alpha"} onClick={() => setUniSort("alpha")} label={t("posts.sortAlpha")} />
+                </div>
+                <button onClick={copyUnifiedSimple} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("posts.copyNames")}</button>
                 <button onClick={downloadUnifiedPdf} disabled={saving} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">{t("posts.exportPdf")}</button>
                 <button onClick={() => setUniData(null)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("posts.close")}</button>
               </div>
@@ -525,7 +549,7 @@ export default function Posts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uniData.rows.map((r, i) => (
+                  {uniRowsView.map((r, i) => (
                     <tr key={r.username + i} className="border-t border-[var(--color-line)] align-top hover:bg-white/5">
                       <td className="px-2 py-1.5 tabular-nums text-[var(--color-slate)]">{i + 1}</td>
                       <td className="px-2 py-1.5">

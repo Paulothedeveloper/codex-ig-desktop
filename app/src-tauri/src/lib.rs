@@ -38,6 +38,12 @@ fn write_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
     std::fs::write(&path, &bytes).map_err(|e| format!("escrever {path}: {e}"))
 }
 
+/// Le bytes de um caminho (o JS pega via diálogo nativo de abrir). Pra importar PDFs no app.
+#[tauri::command]
+fn read_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("ler {path}: {e}"))
+}
+
 /// Mostra/foca a janela do Instagram (recria se foi fechada).
 #[tauri::command]
 async fn focus_ig(app: tauri::AppHandle) -> Result<(), String> {
@@ -230,6 +236,7 @@ pub fn run() {
             ig_destroy,
             ig_targets,
             write_bytes,
+            read_bytes,
             focus_ig
         ])
         .run(tauri::generate_context!())
