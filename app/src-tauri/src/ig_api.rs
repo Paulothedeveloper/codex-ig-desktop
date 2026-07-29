@@ -138,6 +138,8 @@ pub struct Post {
     pub like: i64,
     pub cmt: i64,
     pub views: i64,
+    pub reshares: i64, // nº de compartilhamentos (se o IG mandar; -1 = não veio)
+    pub saves: i64,    // nº de salvamentos (se o IG mandar; -1 = não veio)
     pub taken_at: i64,
     pub caption: String,
 }
@@ -334,6 +336,9 @@ pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec
                         .as_i64()
                         .or_else(|| it["view_count"].as_i64())
                         .unwrap_or(0),
+                    // nº de compart./salvos SE o IG mandar no dado do post (sem endpoint extra); -1 = não veio
+                    reshares: it["reshare_count"].as_i64().or_else(|| it["share_count"].as_i64()).unwrap_or(-1),
+                    saves: it["save_count"].as_i64().or_else(|| it["saved_count"].as_i64()).unwrap_or(-1),
                     taken_at: it["taken_at"].as_i64().unwrap_or(0),
                     caption: it["caption"]["text"]
                         .as_str()
