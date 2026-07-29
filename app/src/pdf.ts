@@ -117,13 +117,22 @@ export function exportInteractionsPdf(opts: {
   return new Uint8Array(doc.output("arraybuffer"));
 }
 
-// ---- Relatorio UNIFICADO: varios posts -> 1 PDF, 1 linha por pessoa (dedup), curtidas + comentarios ----
-type UnifiedRow = { username: string; full: string; verif: boolean; liked: string[]; commented: string[] };
+// ---- Relatorio UNIFICADO: 1 PDF, 1 linha por pessoa (dedup), curtidas + comentarios (com TEXTO) ----
+export type UniPost = { label: string; sub: string }; // "#1", "12 jul · legenda…"
+export type UniRow = {
+  username: string;
+  full: string;
+  verif: boolean;
+  liked: number[]; // indices dos posts
+  commented: { post: number; text: string }[];
+};
 
 export function exportUnifiedPdf(opts: {
   title: string;
   subtitle: string;
-  rows: UnifiedRow[];
+  posts: UniPost[];
+  rows: UniRow[];
+  legendLabel: string;
   colUser: string;
   colName: string;
   colLiked: string;
@@ -163,7 +172,23 @@ export function exportUnifiedPdf(opts: {
   doc.setFontSize(9);
   doc.setTextColor(...SLATE);
   doc.text(clean(opts.subtitle), 40, y);
-  y += 14;
+  y += 16;
+
+  // legenda: #1 = data · legenda
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...TEAL);
+  doc.text(clean(opts.legendLabel), 40, y);
+  y += 12;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...DARK);
+  for (const p of opts.posts) {
+    const line = doc.splitTextToSize(`${clean(p.label)}  ${clean(p.sub)}`, W - 80)[0];
+    doc.text(line, 44, y);
+    y += 11;
+  }
+  y += 6;
 
   const foot = (d: jsPDF) => {
     d.setFontSize(7.5);
@@ -172,8 +197,11 @@ export function exportUnifiedPdf(opts: {
     d.text(String(d.getNumberOfPages()), W - 40, H - 20, { align: "right" });
   };
   const vtag = (v: boolean) => (v ? " (verif.)" : "");
+  const lab = (i: number) => opts.posts[i]?.label || `#${i + 1}`;
+  const likedCell = (a: number[]) => (a.length ? a.map(lab).join(", ") : "-");
+  const cmtCell = (a: { post: number; text: string }[]) =>
+    a.length ? a.map((c) => `${lab(c.post)}: ${clean(c.text) || "(sem texto)"}`).join("\n") : "-";
 
-  const cell = (arr: string[]) => (arr.length ? `${arr.length} · ${clean(arr.join(", "))}` : "-");
   autoTable(doc, {
     startY: y,
     head: [["#", clean(opts.colUser), clean(opts.colName), clean(opts.colLiked), clean(opts.colCommented)]],
@@ -181,13 +209,13 @@ export function exportUnifiedPdf(opts: {
       String(i + 1),
       "@" + clean(r.username) + vtag(r.verif),
       clean(r.full) || "-",
-      cell(r.liked),
-      cell(r.commented),
+      likedCell(r.liked),
+      cmtCell(r.commented),
     ]),
     headStyles: { fillColor: TEAL_HEAD, textColor: [255, 255, 255], fontStyle: "bold" },
-    styles: { fontSize: 8, cellPadding: 3, textColor: DARK, overflow: "linebreak" },
+    styles: { fontSize: 8, cellPadding: 3, textColor: DARK, overflow: "linebreak", valign: "top" },
     alternateRowStyles: { fillColor: [244, 247, 246] },
-    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 108 }, 2: { cellWidth: 120 } },
+    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 96 }, 2: { cellWidth: 96 }, 3: { cellWidth: 60 } },
     margin: { left: 40, right: 40, top: 60 },
     didDrawPage: () => foot(doc),
   });

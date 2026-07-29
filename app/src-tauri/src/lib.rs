@@ -107,6 +107,13 @@ async fn ig_media_info(app: tauri::AppHandle, media_id: String) -> Result<ig_api
     ig_api::media_info(&app, &s, &media_id).await
 }
 
+/// Quem RECOMPARTILHOU o post no story (auto-tenta os endpoints; vazio = ninguem ativo agora).
+#[tauri::command]
+async fn ig_reshares(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_api::IgUser>, String> {
+    let s = sess(&app).await?;
+    ig_api::reshares(&app, &s, &media_id).await
+}
+
 /// MODO CAPTURA: liga o sniffer na janela do IG (loga /api/v1 que a feature dispara).
 #[tauri::command]
 async fn ig_capture_start(app: tauri::AppHandle) -> Result<(), String> {
@@ -215,6 +222,7 @@ pub fn run() {
             ig_likers,
             ig_comments,
             ig_media_info,
+            ig_reshares,
             ig_capture_start,
             ig_capture_get,
             ig_capture_clear,
