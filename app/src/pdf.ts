@@ -116,3 +116,80 @@ export function exportInteractionsPdf(opts: {
 
   return new Uint8Array(doc.output("arraybuffer"));
 }
+
+// ---- Relatorio UNIFICADO: varios posts -> 1 PDF, 1 linha por pessoa (dedup), com quais posts curtiu ----
+type UnifiedRow = { username: string; full: string; verif: boolean; posts: string[] };
+
+export function exportUnifiedPdf(opts: {
+  title: string;
+  subtitle: string;
+  rows: UnifiedRow[];
+  colUser: string;
+  colName: string;
+  colPosts: string;
+  colCount: string;
+  footer: string;
+}): Uint8Array {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(...DARK);
+  doc.rect(0, 0, W, 56, "F");
+  doc.setDrawColor(...TEAL_HEAD);
+  doc.setLineWidth(3);
+  doc.line(34, 38, 47, 20);
+  doc.line(47, 20, 55, 30);
+  doc.setFillColor(...CORAL);
+  doc.circle(55, 30, 3, "F");
+  doc.setTextColor(...TEAL_HEAD);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("Codex IG", 66, 28);
+  doc.setTextColor(200, 205, 212);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("GROWTH SUITE", 66, 40);
+
+  const title = clean(opts.title).slice(0, 140) || "Relatorio";
+  doc.setTextColor(...DARK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  const titleLines = doc.splitTextToSize(title, W - 80).slice(0, 2) as string[];
+  let y = 80;
+  doc.text(titleLines, 40, y);
+  y += titleLines.length * 16 + 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SLATE);
+  doc.text(clean(opts.subtitle), 40, y);
+  y += 14;
+
+  const foot = (d: jsPDF) => {
+    d.setFontSize(7.5);
+    d.setTextColor(...SLATE);
+    d.text(clean(opts.footer), 40, H - 20);
+    d.text(String(d.getNumberOfPages()), W - 40, H - 20, { align: "right" });
+  };
+  const vtag = (v: boolean) => (v ? " (verif.)" : "");
+
+  autoTable(doc, {
+    startY: y,
+    head: [["#", clean(opts.colUser), clean(opts.colName), clean(opts.colCount), clean(opts.colPosts)]],
+    body: opts.rows.map((r, i) => [
+      String(i + 1),
+      "@" + clean(r.username) + vtag(r.verif),
+      clean(r.full) || "-",
+      String(r.posts.length),
+      clean(r.posts.join(", ")),
+    ]),
+    headStyles: { fillColor: TEAL_HEAD, textColor: [255, 255, 255], fontStyle: "bold" },
+    styles: { fontSize: 8, cellPadding: 3, textColor: DARK, overflow: "linebreak" },
+    alternateRowStyles: { fillColor: [244, 247, 246] },
+    columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 120 }, 3: { cellWidth: 34, halign: "center" } },
+    margin: { left: 40, right: 40, top: 60 },
+    didDrawPage: () => foot(doc),
+  });
+
+  return new Uint8Array(doc.output("arraybuffer"));
+}

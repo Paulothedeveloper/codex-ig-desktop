@@ -304,14 +304,41 @@ pub async fn friendships(
     Ok(out)
 }
 
+/// Uma pagina do feed proprio + cursor pra proxima (scroll pra posts antigos).
+#[derive(serde::Serialize)]
+pub struct FeedPage {
+    pub items: Vec<Post>,
+    pub next: String, // "" = acabou
+}
+
 /// Ultimos posts proprios (likes/coments/views publicos) pro Relatorio.
 pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec<Post>, String> {
+    Ok(feed_page(app, s, count, "").await?.items)
+}
+
+/// Pagina do feed a partir de `max_id` ("" = 1a pagina). Devolve items + next cursor.
+pub async fn feed_page(
+    app: &tauri::AppHandle,
+    s: &Session,
+    count: u32,
+    max_id: &str,
+) -> Result<FeedPage, String> {
     let url = format!(
-        "https://www.instagram.com/api/v1/feed/user/{}/?count={count}",
-        s.ds
+        "https://www.instagram.com/api/v1/feed/user/{}/?count={count}{}",
+        s.ds,
+        if max_id.is_empty() { String::new() } else { format!("&max_id={max_id}") }
     );
     let j = webview_fetch(app, &url, false, &s.csrf).await?;
-    Ok(j["items"]
+    let next = if j["more_available"].as_bool().unwrap_or(false) {
+        j["next_max_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let items = j["items"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -349,7 +376,8 @@ pub async fn feed(app: &tauri::AppHandle, s: &Session, count: u32) -> Result<Vec
                 })
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    Ok(FeedPage { items, next })
 }
 
 /// Quem CURTIU um post (media_id). Endpoint da API interna — para posts do dono da sessao,
@@ -425,13 +453,15 @@ pub async fn comments(
     let mut reply_pks: Vec<String> = Vec::new(); // comentarios pai que TEM respostas
     let mut next = String::new();
     for _ in 0..60 {
-        // threading=true -> a API devolve child_comment_count (senao nao da p/ saber quem tem resposta)
+        // threading=true -> a API devolve child_comment_count (senao nao da p/ saber quem tem resposta).
+        // Pagina p/ TRAS (comentarios mais antigos) via max_id/next_max_id. (min_id carrega os mais
+        // NOVOS, nao existem -> parava na 1a pagina; era a causa do 31 virar ~15.)
         let url = format!(
             "https://www.instagram.com/api/v1/media/{media_id}/comments/?can_support_threading=true&permalink_enabled=false{}",
             if next.is_empty() {
                 String::new()
             } else {
-                format!("&min_id={next}")
+                format!("&max_id={next}")
             }
         );
         let j = webview_fetch(app, &url, false, &s.csrf).await?;
@@ -445,14 +475,17 @@ pub async fn comments(
                 }
             }
         }
-        next = j["next_min_id"]
+        next = j["next_max_id"]
             .as_str()
             .map(String::from)
-            .or_else(|| j["next_min_id"].as_i64().map(|n| n.to_string()))
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
             .unwrap_or_default();
         let has_more = j["has_more_comments"].as_bool().unwrap_or(false);
-        if next.is_empty() || !has_more {
+        if next.is_empty() && !has_more {
             break;
+        }
+        if next.is_empty() {
+            break; // sem cursor nao da p/ avancar mesmo com has_more
         }
         tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
     }
