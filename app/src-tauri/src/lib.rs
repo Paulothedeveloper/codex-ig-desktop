@@ -79,6 +79,13 @@ async fn ig_feed(app: tauri::AppHandle, count: Option<u32>) -> Result<Vec<Post>,
     ig_api::feed(&app, &s, count.unwrap_or(12)).await
 }
 
+/// Pagina do feed a partir de max_id (scroll pra posts antigos na aba Posts).
+#[tauri::command]
+async fn ig_feed_page(app: tauri::AppHandle, count: Option<u32>, max_id: Option<String>) -> Result<ig_api::FeedPage, String> {
+    let s = sess(&app).await?;
+    ig_api::feed_page(&app, &s, count.unwrap_or(24), max_id.as_deref().unwrap_or("")).await
+}
+
 /// Quem CURTIU um post (media_id) — lista de likers da conta logada.
 #[tauri::command]
 async fn ig_likers(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_api::IgUser>, String> {
@@ -197,6 +204,7 @@ pub fn run() {
             ig_session_ok,
             ig_graph,
             ig_feed,
+            ig_feed_page,
             ig_likers,
             ig_comments,
             ig_capture_start,

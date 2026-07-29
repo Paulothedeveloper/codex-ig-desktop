@@ -3,7 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
-import { exportInteractionsPdf } from "../pdf";
+import { exportInteractionsPdf, exportUnifiedPdf } from "../pdf";
+
+// normaliza p/ busca: tira acento + minuscula (filtro forte, casa "tamara" com "Tâmara")
+const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // Tauri não faz download de browser — salva via diálogo nativo + escrita no Rust.
 async function saveBytes(bytes: Uint8Array, defaultName: string, filterName: string, ext: string) {
@@ -86,6 +89,8 @@ export default function Posts() {
   const { t, nf, lang } = useI18n();
   const loc = LANGS.find((l) => l.code === lang)!.locale;
   const [posts, setPosts] = useState<Post[] | null>(null);
+  const [feedNext, setFeedNext] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<Post | null>(null);
@@ -96,28 +101,104 @@ export default function Posts() {
   const [view, setView] = useState<"likes" | "comments">("likes");
   const [sortL, setSortL] = useState<"recencia" | "alpha">("recencia");
   const [sortC, setSortC] = useState<"data" | "alpha">("data");
+  const [filter, setFilter] = useState("");
+  // multi-selecao p/ relatorio unificado
+  const [picks, setPicks] = useState<Record<string, Post>>({});
+  const [uni, setUni] = useState<{ on: boolean; done: number; total: number }>({ on: false, done: 0, total: 0 });
+
+  const f = norm(filter);
+  const matchU = (u: IgUser) => !f || norm(u.username).includes(f) || norm(u.full).includes(f);
 
   const likersSorted = useMemo(() => {
     if (!likers) return [];
-    return sortL === "alpha" ? [...likers].sort((a, b) => a.username.localeCompare(b.username)) : likers;
-  }, [likers, sortL]);
+    const base = sortL === "alpha" ? [...likers].sort((a, b) => a.username.localeCompare(b.username)) : likers;
+    return f ? base.filter(matchU) : base;
+  }, [likers, sortL, f]);
   const commentsSorted = useMemo(() => {
     if (!comments) return [];
-    return sortC === "alpha"
+    const base = sortC === "alpha"
       ? [...comments].sort((a, b) => a.user.username.localeCompare(b.user.username))
       : [...comments].sort((a, b) => b.created_at - a.created_at);
-  }, [comments, sortC]);
+    return f ? base.filter((c) => matchU(c.user) || norm(c.text).includes(f)) : base;
+  }, [comments, sortC, f]);
+
+  const pickIds = Object.keys(picks);
 
   async function loadPosts() {
     setLoading(true);
     setErr("");
     setSel(null);
+    setPicks({});
     try {
-      setPosts(await invoke<Post[]>("ig_feed", { count: 24 }));
+      const page = await invoke<{ items: Post[]; next: string }>("ig_feed_page", { count: 24, maxId: "" });
+      setPosts(page.items);
+      setFeedNext(page.next);
     } catch (e) {
       setErr(String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!feedNext || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await invoke<{ items: Post[]; next: string }>("ig_feed_page", { count: 24, maxId: feedNext });
+      setPosts((prev) => [...(prev || []), ...page.items]);
+      setFeedNext(page.next);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function togglePick(p: Post) {
+    setPicks((prev) => {
+      const n = { ...prev };
+      if (n[p.id]) delete n[p.id];
+      else n[p.id] = p;
+      return n;
+    });
+  }
+
+  // relatorio UNIFICADO: puxa likers de cada post escolhido, junta por pessoa (dedup) com quais posts curtiu
+  async function exportUnified() {
+    const chosen = pickIds.map((id) => picks[id]);
+    if (chosen.length < 2) return;
+    setUni({ on: true, done: 0, total: chosen.length });
+    const map = new Map<string, { u: IgUser; posts: string[] }>();
+    try {
+      for (let i = 0; i < chosen.length; i++) {
+        const p = chosen[i];
+        const lk = await invoke<IgUser[]>("ig_likers", { mediaId: p.id });
+        const label = p.code || dt(p.taken_at);
+        for (const u of lk) {
+          const e = map.get(u.pk);
+          if (e) { if (!e.posts.includes(label)) e.posts.push(label); }
+          else map.set(u.pk, { u, posts: [label] });
+        }
+        setUni({ on: true, done: i + 1, total: chosen.length });
+      }
+      const rows = [...map.values()]
+        .sort((a, b) => a.u.username.localeCompare(b.u.username))
+        .map((e) => ({ username: e.u.username, full: e.u.full, verif: e.u.verif, posts: e.posts }));
+      const bytes = exportUnifiedPdf({
+        title: t("posts.uniTitle", { n: chosen.length }),
+        subtitle: t("posts.uniSub", { people: rows.length, posts: chosen.length, date: new Date().toLocaleString(loc) }),
+        rows,
+        colUser: t("posts.colUser"),
+        colName: t("posts.colName"),
+        colPosts: t("posts.colPosts"),
+        colCount: t("posts.colCount"),
+        footer: t("posts.pdfFooter", { date: new Date().toLocaleString(loc) }),
+      });
+      await saveBytes(bytes, `codexig-unificado-${chosen.length}posts.pdf`, "PDF", "pdf");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setUni({ on: false, done: 0, total: 0 });
     }
   }
 
@@ -208,26 +289,62 @@ export default function Posts() {
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {posts!.map((p) => {
             const on = sel?.id === p.id;
+            const picked = !!picks[p.id];
             return (
-              <button
+              <div
                 key={p.id}
-                onClick={() => open(p)}
-                className={"group relative aspect-square overflow-hidden rounded-lg border transition " + (on ? "border-[var(--color-teal)] ring-2 ring-[var(--color-teal)]/40" : "border-[var(--color-line)] hover:border-[var(--color-steel)]")}
+                className={"group relative aspect-square overflow-hidden rounded-lg border transition " + (on ? "border-[var(--color-teal)] ring-2 ring-[var(--color-teal)]/40" : picked ? "border-[var(--color-teal2)]" : "border-[var(--color-line)] hover:border-[var(--color-steel)]")}
               >
-                {p.thumb ? (
-                  <img src={p.thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="grid h-full w-full place-items-center bg-[#0a0e15] text-[10px] text-[var(--color-slate)]">sem capa</div>
-                )}
-                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 text-[10.5px] font-bold text-white">
-                  <span>{nf(p.like)} ♥</span>
-                  <span>{nf(p.cmt)} 💬</span>
+                <button onClick={() => open(p)} className="absolute inset-0 h-full w-full">
+                  {p.thumb ? (
+                    <img src={p.thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center bg-[#0a0e15] text-[10px] text-[var(--color-slate)]">{t("posts.noCover")}</div>
+                  )}
+                </button>
+                {/* checkbox de multi-selecao (relatorio unificado) */}
+                <button
+                  onClick={() => togglePick(p)}
+                  title={t("posts.pickForUnified")}
+                  className={"absolute left-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-md border text-[13px] font-bold transition " + (picked ? "border-[var(--color-teal)] bg-[var(--color-teal)] text-[#04120f]" : "border-white/50 bg-black/45 text-white hover:bg-black/70")}
+                >
+                  {picked ? "✓" : ""}
+                </button>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 text-[10.5px] font-bold text-white">
+                  <span>{nf(p.like)} {t("posts.likeShort")}</span>
+                  <span>{nf(p.cmt)} {t("posts.cmtShort")}</span>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
+        {feedNext && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="mt-3 w-full rounded-xl border border-[var(--color-steel)] bg-[#0e1522] py-2.5 text-[13px] font-bold text-[var(--color-paper)] hover:border-[var(--color-teal)] disabled:opacity-50"
+          >
+            {loadingMore ? t("posts.loadingMore") : t("posts.loadMore")}
+          </button>
+        )}
       </div>
+
+      {/* barra do relatorio unificado (aparece com 2+ posts marcados) */}
+      {pickIds.length >= 1 && (
+        <div className="sticky bottom-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] px-4 py-3 shadow-lg">
+          <span className="text-[13px] text-[var(--color-paper)]">{t("posts.picked", { n: pickIds.length })}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPicks({})} className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--color-slate)] hover:text-[var(--color-paper)]">{t("posts.clearPicks")}</button>
+            <button
+              onClick={exportUnified}
+              disabled={pickIds.length < 2 || uni.on}
+              className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40"
+            >
+              {uni.on ? t("posts.uniProgress", { done: uni.done, total: uni.total }) : t("posts.uniBtn")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* detalhe do post selecionado */}
       {sel && (
@@ -238,6 +355,9 @@ export default function Posts() {
               <div className="mt-0.5 text-[12px] text-[var(--color-slate)]">{dt(sel.taken_at)} · {nf(sel.like)} {t("posts.likes")} · {nf(sel.cmt)} {t("posts.comments")}{sel.reshares >= 0 ? ` · ${nf(sel.reshares)} ${t("posts.shares")}` : ""}{sel.saves >= 0 ? ` · ${nf(sel.saves)} ${t("posts.saves")}` : ""}</div>
             </div>
             <div className="flex shrink-0 gap-2">
+              <button onClick={() => open(sel)} disabled={dLoading} title={t("posts.reloadData")} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[12px] font-bold text-[var(--color-teal2)] disabled:opacity-40">
+                {dLoading ? t("posts.reloading") : t("posts.reloadData")}
+              </button>
               <button onClick={exportPdf} disabled={dLoading || saving || (!likers && !comments)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f] disabled:opacity-40">
                 {t("posts.exportPdf")}
               </button>
@@ -267,6 +387,14 @@ export default function Posts() {
                 </button>
               </div>
 
+              {/* filtro em tempo real (@ ou nome; comentário também casa texto) */}
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder={t("posts.filterPh")}
+                className="mb-2 w-full rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
+              />
+
               {/* ordenação */}
               <div className="mb-2 flex items-center gap-2 text-[11.5px]">
                 <span className="text-[var(--color-slate)]">{t("posts.sortBy")}:</span>
@@ -281,7 +409,20 @@ export default function Posts() {
                     <SortBtn on={sortC === "alpha"} onClick={() => setSortC("alpha")} label={t("posts.sortAlpha")} />
                   </>
                 )}
+                {f && <span className="text-[var(--color-teal2)]">{t("posts.filtering", { n: view === "likes" ? likersSorted.length : commentsSorted.length })}</span>}
               </div>
+
+              {/* transparência: puxado vs contador do IG */}
+              {view === "likes" && likers && sel.like > likers.length && (
+                <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
+                  {t("posts.gapNote", { got: likers.length, count: sel.like })}
+                </p>
+              )}
+              {view === "comments" && comments && sel.cmt > comments.length && (
+                <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
+                  {t("posts.gapNoteC", { got: comments.length, count: sel.cmt })}
+                </p>
+              )}
 
               <div className="max-h-[42vh] overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-1.5">
                 {view === "likes" ? (
