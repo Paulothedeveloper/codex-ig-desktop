@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./index.css";
 import Relatorio from "./screens/Relatorio";
 import Instagram from "./screens/Instagram";
+import Posts from "./screens/Posts";
 import Cliques from "./screens/Cliques";
 import Config from "./screens/Config";
 import { Logo } from "./Logo";
@@ -15,6 +16,8 @@ const ICON: Record<string, string> = {
   instagram:
     '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>',
   report: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  posts:
+    '<rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/>',
   clicks:
     '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
   config:
@@ -37,8 +40,8 @@ function Ic({ n, s = 20 }: { n: string; s?: number }) {
   );
 }
 
-type TabId = "instagram" | "report" | "clicks" | "config";
-const TAB_IDS: TabId[] = ["instagram", "report", "clicks", "config"];
+type TabId = "instagram" | "report" | "posts" | "clicks" | "config";
+const TAB_IDS: TabId[] = ["instagram", "report", "posts", "clicks", "config"];
 
 export default function App() {
   const { t, needsChoice } = useI18n();
@@ -121,6 +124,7 @@ export default function App() {
         <div className="p-7 max-w-4xl">
           <div className={tab === "instagram" ? "" : "hidden"}><Instagram /></div>
           <div className={tab === "report" ? "" : "hidden"}><Relatorio /></div>
+          <div className={tab === "posts" ? "" : "hidden"}><Posts /></div>
           <div className={tab === "clicks" ? "" : "hidden"}><Cliques /></div>
           <div className={tab === "config" ? "" : "hidden"}><Config /></div>
         </div>

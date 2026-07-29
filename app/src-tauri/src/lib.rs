@@ -72,6 +72,20 @@ async fn ig_feed(app: tauri::AppHandle, count: Option<u32>) -> Result<Vec<Post>,
     ig_api::feed(&app, &s, count.unwrap_or(12)).await
 }
 
+/// Quem CURTIU um post (media_id) — lista de likers da conta logada.
+#[tauri::command]
+async fn ig_likers(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_api::IgUser>, String> {
+    let s = sess(&app).await?;
+    ig_api::likers(&app, &s, &media_id).await
+}
+
+/// Quem COMENTOU um post (media_id) — user + texto, paginado.
+#[tauri::command]
+async fn ig_comments(app: tauri::AppHandle, media_id: String) -> Result<Vec<ig_api::Comment>, String> {
+    let s = sess(&app).await?;
+    ig_api::comments(&app, &s, &media_id).await
+}
+
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
 #[tauri::command]
 async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
@@ -155,6 +169,8 @@ pub fn run() {
             ig_session_ok,
             ig_graph,
             ig_feed,
+            ig_likers,
+            ig_comments,
             ig_destroy,
             ig_targets,
             focus_ig
