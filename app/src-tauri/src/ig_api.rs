@@ -147,6 +147,7 @@ pub struct Comment {
     pub user: IgUser,
     pub text: String,
     pub likes: i64,
+    pub created_at: i64,
 }
 
 /// Le ds_user_id + csrftoken (nao-httpOnly) da webview so pra montar URL+header. A AUTENTICACAO
@@ -397,6 +398,7 @@ pub async fn comments(
                     },
                     text: c["text"].as_str().unwrap_or("").chars().take(280).collect(),
                     likes: c["comment_like_count"].as_i64().unwrap_or(0),
+                    created_at: c["created_at"].as_i64().or_else(|| c["created_at_utc"].as_i64()).unwrap_or(0),
                 });
             }
         }
