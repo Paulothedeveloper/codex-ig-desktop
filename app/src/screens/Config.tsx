@@ -5,6 +5,7 @@ import { useConfirm } from "../Confirm";
 import { privacyOn, setPrivacy } from "../privacy";
 
 const WL_KEY = "codexig_whitelist";
+const SERPER_KEY = "codexig_serper";
 
 export default function Config() {
   const { t, lang, setLang } = useI18n();
@@ -13,6 +14,7 @@ export default function Config() {
   const [checking, setChecking] = useState(false);
   const [wl, setWl] = useState<string[]>(JSON.parse(localStorage.getItem(WL_KEY) || "[]"));
   const [blur, setBlur] = useState(privacyOn());
+  const [serper, setSerper] = useState(localStorage.getItem(SERPER_KEY) || "");
 
   async function check() {
     setChecking(true);
@@ -81,6 +83,22 @@ export default function Config() {
           <button onClick={exportWl} disabled={!wl.length} className="rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-paper)] disabled:opacity-40">{t("config.exportCsv")}</button>
           <button onClick={clearWl} disabled={!wl.length} className="rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[#43221d] text-[var(--color-coral2)] disabled:opacity-40">{t("config.clearWl")}</button>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)] mb-3">{t("config.search")}</div>
+        <div className="text-[12px] text-[var(--color-slate)] leading-snug mb-2">{t("config.searchHint")}</div>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={serper}
+            onChange={(e) => { setSerper(e.target.value); localStorage.setItem(SERPER_KEY, e.target.value.trim()); }}
+            placeholder={t("config.searchPh")}
+            className="min-w-0 flex-1 rounded-xl border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
+          />
+          <a href="https://serper.dev" target="_blank" rel="noreferrer" className="shrink-0 rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-teal2)]">serper.dev</a>
+        </div>
+        <div className="mt-1 text-[11px] text-[var(--color-slate)]">{serper ? t("config.searchSet") : t("config.searchUnset")}</div>
       </div>
 
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">

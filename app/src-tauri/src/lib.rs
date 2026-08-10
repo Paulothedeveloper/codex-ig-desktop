@@ -44,6 +44,78 @@ fn read_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("ler {path}: {e}"))
 }
 
+/// Um resultado de busca (Google via Serper).
+#[derive(serde::Serialize)]
+struct SearchHit {
+    title: String,
+    link: String,
+    snippet: String,
+    source: String,
+    date: String,
+    image: String,
+}
+
+/// Busca na web (Google real via Serper) — o motor "tipo Google" do Monitor.
+/// endpoint: "search" (padrao) | "news" | "images". A chave vem do config local (nunca no repo).
+#[tauri::command]
+async fn web_search(
+    query: String,
+    key: String,
+    endpoint: Option<String>,
+    num: Option<u32>,
+) -> Result<Vec<SearchHit>, String> {
+    if key.trim().is_empty() {
+        return Err("sem chave de busca (configure em Config)".into());
+    }
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let ep = match endpoint.as_deref() {
+        Some("news") => "news",
+        Some("images") => "images",
+        _ => "search",
+    };
+    let body = serde_json::json!({
+        "q": query,
+        "gl": "br",
+        "hl": "pt",
+        "num": num.unwrap_or(20).min(100),
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("https://google.serper.dev/{ep}"))
+        .header("X-API-KEY", key.trim())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("busca falhou: {e}"))?;
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        return Err(format!("busca retornou {code} (chave invalida ou sem creditos?)"));
+    }
+    let j: serde_json::Value = resp.json().await.map_err(|e| format!("resposta invalida: {e}"))?;
+    let host = |url: &str| -> String {
+        url.split("://").nth(1).unwrap_or(url).split('/').next().unwrap_or("").replace("www.", "")
+    };
+    let arr = j.get("organic").or_else(|| j.get("news")).or_else(|| j.get("images")).and_then(|v| v.as_array());
+    let mut out = Vec::new();
+    if let Some(a) = arr {
+        for o in a {
+            let link = o["link"].as_str().or_else(|| o["imageUrl"].as_str()).unwrap_or("").to_string();
+            let source = o["source"].as_str().map(String::from).unwrap_or_else(|| host(&link));
+            out.push(SearchHit {
+                title: o["title"].as_str().unwrap_or("").to_string(),
+                link,
+                snippet: o["snippet"].as_str().unwrap_or("").to_string(),
+                source,
+                date: o["date"].as_str().unwrap_or("").to_string(),
+                image: o["imageUrl"].as_str().or_else(|| o["thumbnailUrl"].as_str()).unwrap_or("").to_string(),
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// Mostra/foca a janela do Instagram (recria se foi fechada).
 #[tauri::command]
 async fn focus_ig(app: tauri::AppHandle) -> Result<(), String> {
@@ -237,6 +309,7 @@ pub fn run() {
             ig_targets,
             write_bytes,
             read_bytes,
+            web_search,
             focus_ig
         ])
         .run(tauri::generate_context!())
