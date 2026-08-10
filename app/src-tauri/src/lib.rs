@@ -64,8 +64,19 @@ async fn web_search(
     endpoint: Option<String>,
     num: Option<u32>,
 ) -> Result<Vec<SearchHit>, String> {
-    if key.trim().is_empty() {
-        return Err("sem chave de busca (configure em Config)".into());
+    // chave: o que veio do Config (localStorage) tem prioridade; se vazio, tenta o arquivo
+    // local do Paulo (nunca vai pro repo — so existe na maquina dele). Zero-config no PC dele.
+    let mut key = key.trim().to_string();
+    if key.is_empty() {
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let p = format!("{home}\\Documents\\API KEY CLAUDE CODE\\SERPER.txt");
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                key = s.trim().to_string();
+            }
+        }
+    }
+    if key.is_empty() {
+        return Err("sem chave de busca (cole a chave Serper em Config)".into());
     }
     if query.trim().is_empty() {
         return Ok(vec![]);

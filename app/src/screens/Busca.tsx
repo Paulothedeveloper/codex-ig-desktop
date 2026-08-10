@@ -22,15 +22,14 @@ export default function Busca() {
   const key = () => localStorage.getItem("codexig_serper") || "";
 
   async function run() {
-    const k = key().trim();
-    if (!k) { setErr(t("busca.noKey")); return; }
     if (!q.trim()) return;
     setLoading(true);
     setErr("");
     try {
       const query = scope === "instagram" ? `site:instagram.com ${q}` : q;
       const endpoint = scope === "news" ? "news" : "search";
-      const r = await invoke<Hit[]>("web_search", { query, key: k, endpoint, num: 20 });
+      // passa a chave do Config (pode estar vazia — o Rust cai no arquivo local do Paulo)
+      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 20 });
       setHits(r);
     } catch (e) {
       setErr(String(e));
