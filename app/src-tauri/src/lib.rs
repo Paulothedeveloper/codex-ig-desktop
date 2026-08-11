@@ -93,14 +93,17 @@ async fn web_search(
         "hl": "pt",
         "num": num.unwrap_or(20).min(100),
     });
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client
         .post(format!("https://google.serper.dev/{ep}"))
         .header("X-API-KEY", key.trim())
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("busca falhou: {e}"))?;
+        .map_err(|e| format!("busca falhou (rede/timeout): {e}"))?;
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
