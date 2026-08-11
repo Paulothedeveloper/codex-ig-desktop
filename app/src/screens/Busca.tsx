@@ -60,6 +60,8 @@ export default function Busca() {
   const [err, setErr] = useState("");
   const [summary, setSummary] = useState<string | null>(null);
   const [presets, setPresets] = useState<string[]>(JSON.parse(localStorage.getItem("codexig_monitor") || "[]"));
+  const [reply, setReply] = useState<{ h: Ranked; text: string } | null>(null);
+  const [cmp, setCmp] = useState<{ open: boolean; input: string; busy: string; rows: { term: string; total: number; negPct: number; sample: string }[] | null }>({ open: false, input: "", busy: "", rows: null });
 
   function applyClient(list: Ranked[]): Ranked[] {
     let r = [...list];
@@ -164,6 +166,47 @@ export default function Busca() {
       setErr(String(e));
     } finally {
       setBusy("");
+    }
+  }
+
+  // ----- IA: gerador de resposta a um ataque/menção -----
+  async function genReply(h: Ranked) {
+    setReply({ h, text: "" });
+    try {
+      const sys = "Voce e assessor de comunicacao de campanha. Escreva uma resposta CURTA (2-3 frases), educada, por CONTEXTO e fatos, SEM atacar ninguem, pronta pra publicar. Tom institucional, PT-BR.";
+      const user = `Alvo: "${q}". Publicacao a responder (${h.source}): "${h.title}. ${h.snippet}". Escreva a resposta.`;
+      const text = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: false });
+      setReply({ h, text });
+    } catch (e) {
+      setReply({ h, text: String(e) });
+    }
+  }
+
+  // ----- Comparar candidatos: volume + % de ataque por termo -----
+  async function compare() {
+    const terms = cmp.input.split(/[,\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 4);
+    if (terms.length < 2) return;
+    setCmp((c) => ({ ...c, busy: t("busca.comparing"), rows: null }));
+    try {
+      const rows: { term: string; total: number; negPct: number; sample: string }[] = [];
+      for (const term of terms) {
+        const r = await invoke<Hit[]>("web_search", { query: term, key: serperKey().trim(), endpoint: "search", num: 20, site: undefined, tbs: "" });
+        let negPct = 0, sample = "";
+        if (r.length) {
+          const user = `Alvo: "${term}".\nItens:\n` + r.slice(0, 15).map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\nResponda SO JSON {"itens":[{"i":0,"s":"positivo|negativo|neutro"}]}`;
+          try {
+            const data = JSON.parse(await invoke<string>("ai_chat", { system: "Classifique sentimento EM RELACAO ao alvo. So JSON.", user, key: groqKey().trim(), json: true }));
+            const negs = (data.itens || []).filter((x: { s: string }) => String(x.s).toLowerCase().startsWith("neg"));
+            negPct = Math.round((negs.length / Math.max(1, (data.itens || []).length)) * 100);
+            if (negs[0] != null) sample = r[negs[0].i]?.title || "";
+          } catch { /* IA opcional */ }
+        }
+        rows.push({ term, total: r.length, negPct, sample });
+      }
+      setCmp((c) => ({ ...c, busy: "", rows }));
+    } catch (e) {
+      setErr(String(e));
+      setCmp((c) => ({ ...c, busy: "" }));
     }
   }
 
@@ -279,6 +322,7 @@ export default function Busca() {
           <button onClick={() => analyze()} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
           <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
           <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
+          <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
       </div>
@@ -324,22 +368,85 @@ export default function Busca() {
           ) : (
             <div className="stagger space-y-2">
               {shown.map((h, i) => (
-                <a key={h.link + i} href={h.link} target="_blank" rel="noreferrer" className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] hover:-translate-y-0.5">
-                  {h.image ? <img src={h.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : null}
-                  <div className="min-w-0">
-                    <div className="truncate text-[14px] font-bold text-[var(--color-teal2)]">{h.title || h.link}</div>
-                    <div className="flex flex-wrap items-center gap-x-2 truncate text-[11.5px] text-[var(--color-slate)]">
-                      <span>{h.source}{h.date ? ` · ${h.date}` : ""}</span>
-                      {h.sent ? <span className={"font-bold " + sentColor(h.sent)}>{h.sent === "pos" ? t("busca.sPos") : h.sent === "neg" ? t("busca.sNeg") : t("busca.sNeu")}</span> : null}
-                      {h.likes > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.likes)} {t("busca.likes")}</span> : null}
-                      {h.comments > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.comments)} {t("busca.comments")}</span> : null}
+                <div key={h.link + i} className="rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] transition hover:border-[var(--color-steel)]">
+                  <a href={h.link} target="_blank" rel="noreferrer" className="flex gap-3 p-3">
+                    {h.image ? <img src={h.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : null}
+                    <div className="min-w-0">
+                      <div className="truncate text-[14px] font-bold text-[var(--color-teal2)]">{h.title || h.link}</div>
+                      <div className="flex flex-wrap items-center gap-x-2 truncate text-[11.5px] text-[var(--color-slate)]">
+                        <span>{h.source}{h.date ? ` · ${h.date}` : ""}</span>
+                        {h.sent ? <span className={"font-bold " + sentColor(h.sent)}>{h.sent === "pos" ? t("busca.sPos") : h.sent === "neg" ? t("busca.sNeg") : t("busca.sNeu")}</span> : null}
+                        {h.likes > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.likes)} {t("busca.likes")}</span> : null}
+                        {h.comments > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.comments)} {t("busca.comments")}</span> : null}
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{h.snippet}</p>
                     </div>
-                    <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{h.snippet}</p>
+                  </a>
+                  <div className="flex justify-end border-t border-[var(--color-line)] px-3 py-1.5">
+                    <button onClick={() => genReply(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.reply")}</button>
                   </div>
-                </a>
+                </div>
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* modal: resposta gerada por IA */}
+      {reply && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
+          <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.replyTitle")}</span>
+              <button onClick={() => setReply(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
+            </div>
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{reply.h.title}</div>
+            {reply.text ? (
+              <>
+                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{reply.text}</p>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button onClick={() => navigator.clipboard.writeText(reply.text)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f]">{t("busca.copyReply")}</button>
+                  <button onClick={() => genReply(reply.h)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.regen")}</button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel h-4" />)}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* modal: comparar candidatos */}
+      {cmp.open && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
+          <div className="pop w-full max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.compareTitle")}</span>
+              <button onClick={() => setCmp((c) => ({ ...c, open: false }))} className="text-[13px] text-[var(--color-slate)]">×</button>
+            </div>
+            <p className="mb-2 text-[12px] text-[var(--color-slate)]">{t("busca.compareHint")}</p>
+            <div className="flex gap-2">
+              <input value={cmp.input} onChange={(e) => setCmp((c) => ({ ...c, input: e.target.value }))} placeholder="Fúria, Marcos Rogério, Hildo" className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+              <button onClick={compare} disabled={!!cmp.busy} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40">{cmp.busy || t("busca.compareGo")}</button>
+            </div>
+            {cmp.rows && (
+              <div className="mt-4 overflow-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead className="text-left text-[var(--color-slate)]"><tr><th className="py-1.5">{t("busca.cTerm")}</th><th>{t("busca.cVol")}</th><th>{t("busca.cNeg")}</th><th>{t("busca.cSample")}</th></tr></thead>
+                  <tbody>
+                    {cmp.rows.map((r) => (
+                      <tr key={r.term} className="border-t border-[var(--color-line)] align-top">
+                        <td className="py-1.5 font-bold text-[var(--color-paper)]">{r.term}</td>
+                        <td className="tabular-nums">{r.total}</td>
+                        <td className={"tabular-nums font-bold " + (r.negPct >= 40 ? "text-[var(--color-coral2)]" : "text-[var(--color-slate)]")}>{r.negPct}%</td>
+                        <td className="text-[var(--color-slate)]">{r.sample || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
