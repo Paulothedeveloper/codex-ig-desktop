@@ -44,6 +44,57 @@ fn read_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("ler {path}: {e}"))
 }
 
+/// Resolve chave de API: prioriza o Config; se vazio, le do arquivo local do Paulo
+/// (Documents\API KEY CLAUDE CODE\<file>). Nunca vai pro repo.
+fn resolve_key(config: &str, file: &str) -> String {
+    let c = config.trim();
+    if !c.is_empty() {
+        return c.to_string();
+    }
+    std::env::var("USERPROFILE")
+        .ok()
+        .map(|h| format!("{h}\\Documents\\API KEY CLAUDE CODE\\{file}"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// IA (Groq, OpenAI-compat) — sentimento (JSON) + resumo de inteligencia. Key Config ou GROQ API.txt.
+#[tauri::command]
+async fn ai_chat(system: String, user: String, key: String, json: Option<bool>) -> Result<String, String> {
+    let key = resolve_key(&key, "GROQ API.txt");
+    if key.is_empty() {
+        return Err("sem chave de IA (cole a chave Groq em Config)".into());
+    }
+    let mut body = serde_json::json!({
+        "model": "llama-3.3-70b-versatile",
+        "temperature": 0,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+    });
+    if json.unwrap_or(false) {
+        body["response_format"] = serde_json::json!({"type": "json_object"});
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Authorization", format!("Bearer {key}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("IA falhou (rede/timeout): {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("IA retornou {} (chave/limite?)", resp.status().as_u16()));
+    }
+    let j: serde_json::Value = resp.json().await.map_err(|e| format!("IA resposta invalida: {e}"))?;
+    Ok(j["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string())
+}
+
 /// Um resultado de busca (Google via Serper).
 #[derive(serde::Serialize)]
 struct SearchHit {
@@ -66,17 +117,7 @@ async fn web_search(
     site: Option<String>,
     tbs: Option<String>,
 ) -> Result<Vec<SearchHit>, String> {
-    // chave: o que veio do Config (localStorage) tem prioridade; se vazio, tenta o arquivo
-    // local do Paulo (nunca vai pro repo — so existe na maquina dele). Zero-config no PC dele.
-    let mut key = key.trim().to_string();
-    if key.is_empty() {
-        if let Ok(home) = std::env::var("USERPROFILE") {
-            let p = format!("{home}\\Documents\\API KEY CLAUDE CODE\\SERPER.txt");
-            if let Ok(s) = std::fs::read_to_string(&p) {
-                key = s.trim().to_string();
-            }
-        }
-    }
+    let key = resolve_key(&key, "SERPER.txt");
     if key.is_empty() {
         return Err("sem chave de busca (cole a chave Serper em Config)".into());
     }
@@ -86,6 +127,8 @@ async fn web_search(
     let ep = match endpoint.as_deref() {
         Some("news") => "news",
         Some("images") => "images",
+        Some("videos") => "videos",
+        Some("places") => "places",
         _ => "search",
     };
     let mut body = serde_json::json!({
@@ -104,7 +147,7 @@ async fn web_search(
         .map_err(|e| e.to_string())?;
     let resp = client
         .post(format!("https://google.serper.dev/{ep}"))
-        .header("X-API-KEY", key.trim())
+        .header("X-API-KEY", key.as_str())
         .json(&body)
         .send()
         .await
@@ -122,7 +165,12 @@ async fn web_search(
     let host = |url: &str| -> String {
         url.split("://").nth(1).unwrap_or(url).split('/').next().unwrap_or("").replace("www.", "")
     };
-    let arr = j.get("organic").or_else(|| j.get("news")).or_else(|| j.get("images")).and_then(|v| v.as_array());
+    let arr = j.get("organic")
+        .or_else(|| j.get("news"))
+        .or_else(|| j.get("videos"))
+        .or_else(|| j.get("images"))
+        .or_else(|| j.get("places"))
+        .and_then(|v| v.as_array());
     let mut out = Vec::new();
     if let Some(a) = arr {
         for o in a {
@@ -340,6 +388,7 @@ pub fn run() {
             write_bytes,
             read_bytes,
             web_search,
+            ai_chat,
             focus_ig
         ])
         .run(tauri::generate_context!())

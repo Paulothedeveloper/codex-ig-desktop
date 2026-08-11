@@ -3,14 +3,26 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+import { exportDossierPdf } from "../pdf";
 
 type Hit = { title: string; link: string; snippet: string; source: string; date: string; image: string };
-type Ranked = Hit & { likes: number; comments: number };
-type Scope = "all" | "instagram" | "news";
+type Sent = "pos" | "neg" | "neu";
+type Ranked = Hit & { likes: number; comments: number; sent?: Sent };
+type Kind = "search" | "videos" | "images" | "news" | "places";
+type Net = "all" | "instagram" | "facebook" | "x" | "youtube" | "tiktok";
 type Period = "" | "d" | "w" | "m" | "y";
 type Sort = "rel" | "recent" | "old" | "likes" | "comments";
 
-// tira curtidas/comentários do trecho (ex "702 likes, 91 comments" · "1.2K likes") pra ordenar
+const NET_DOMAINS: Record<Net, string[]> = {
+  all: [],
+  instagram: ["instagram.com"],
+  facebook: ["facebook.com", "fb.com"],
+  x: ["x.com", "twitter.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  tiktok: ["tiktok.com"],
+};
+const NET_HINT: Record<Net, string> = { all: "", instagram: "instagram", facebook: "facebook", x: "twitter", youtube: "youtube", tiktok: "tiktok" };
+
 function parseCount(snippet: string, kind: "likes" | "comments"): number {
   const re = kind === "likes"
     ? /([\d.,]+)\s*(k|m|mil)?\s*(?:likes|curtidas)/i
@@ -18,51 +30,64 @@ function parseCount(snippet: string, kind: "likes" | "comments"): number {
   const m = snippet.match(re);
   if (!m) return 0;
   const suf = (m[2] || "").toLowerCase();
-  let n = suf
-    ? parseFloat(m[1].replace(",", ".")) * (suf === "m" ? 1e6 : 1e3)
-    : parseInt(m[1].replace(/[.,]/g, ""), 10);
+  const n = suf ? parseFloat(m[1].replace(",", ".")) * (suf === "m" ? 1e6 : 1e3) : parseInt(m[1].replace(/[.,]/g, ""), 10);
   return Math.round(n) || 0;
 }
 
-async function saveBytes(bytes: Uint8Array, name: string) {
-  const path = await save({ defaultPath: name, filters: [{ name: "CSV", extensions: ["csv"] }] });
+async function saveBytes(bytes: Uint8Array, name: string, ext: string, filterName: string) {
+  const path = await save({ defaultPath: name, filters: [{ name: filterName, extensions: [ext] }] });
   if (!path) return;
   await invoke("write_bytes", { path, bytes: Array.from(bytes) });
 }
 
 export default function Busca() {
   const { t, nf } = useI18n();
+  const serperKey = () => localStorage.getItem("codexig_serper") || "";
+  const groqKey = () => localStorage.getItem("codexig_groq") || "";
+
   const [q, setQ] = useState("");
-  const [scope, setScope] = useState<Scope>("all");
+  const [kind, setKind] = useState<Kind>("search");
+  const [net, setNet] = useState<Net>("all");
   const [period, setPeriod] = useState<Period>("");
   const [sort, setSort] = useState<Sort>("rel");
+  const [exclude, setExclude] = useState("");
+  const [onlyEng, setOnlyEng] = useState(false);
+  const [sentFilter, setSentFilter] = useState<"all" | "neg" | "pos">("all");
+
   const [hits, setHits] = useState<Ranked[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  const key = () => localStorage.getItem("codexig_serper") || "";
+  const [summary, setSummary] = useState<string | null>(null);
+  const [presets, setPresets] = useState<string[]>(JSON.parse(localStorage.getItem("codexig_monitor") || "[]"));
 
-  async function run() {
+  function applyClient(list: Ranked[]): Ranked[] {
+    let r = [...list];
+    if (net !== "all") r = r.filter((h) => NET_DOMAINS[net].some((d) => h.link.includes(d)));
+    const ex = exclude.trim().toLowerCase();
+    if (ex) r = r.filter((h) => !h.link.toLowerCase().includes(ex));
+    if (onlyEng) r = r.filter((h) => h.likes > 0 || h.comments > 0);
+    if (sort === "likes") r.sort((a, b) => b.likes - a.likes);
+    else if (sort === "comments") r.sort((a, b) => b.comments - a.comments);
+    else if (sort === "old") r.reverse();
+    return r;
+  }
+
+  async function run(over?: { sort?: Sort }) {
     if (!q.trim()) return;
+    const useSort = over?.sort ?? sort;
     setLoading(true);
     setErr("");
+    setSummary(null);
     try {
-      // Serper grátis NÃO deixa usar `site:` → pro Instagram busca "termo instagram" e filtra o domínio no Rust.
-      const query = scope === "instagram" ? `${q} instagram` : q;
-      const endpoint = scope === "news" ? "news" : "search";
-      const site = scope === "instagram" ? "instagram.com" : undefined;
-      // tbs do Google: período (qdr) + ordenar por data (sbd:1)
+      const query = net === "all" ? q : `${q} ${NET_HINT[net]}`;
       const tbsParts: string[] = [];
       if (period) tbsParts.push(`qdr:${period}`);
-      if (sort === "recent") tbsParts.push("sbd:1");
-      const tbs = tbsParts.join(",");
-      // passa a chave do Config (pode estar vazia — o Rust cai no arquivo local do Paulo)
-      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 30, site, tbs });
-      // extrai curtidas/comentários do trecho + ordena client-side (o que o Google não ordena)
+      if (useSort === "recent") tbsParts.push("sbd:1");
+      const r = await invoke<Hit[]>("web_search", { query, key: serperKey().trim(), endpoint: kind, num: 30, site: undefined, tbs: tbsParts.join(",") });
       const ranked: Ranked[] = r.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
-      if (sort === "likes") ranked.sort((a, b) => b.likes - a.likes);
-      else if (sort === "comments") ranked.sort((a, b) => b.comments - a.comments);
-      else if (sort === "old") ranked.reverse();
-      setHits(ranked);
+      setHits(applyClient(ranked));
+      setSentFilter("all");
     } catch (e) {
       setErr(String(e));
       setHits(null);
@@ -71,27 +96,107 @@ export default function Busca() {
     }
   }
 
+  // ----- IA: sentimento em lote -----
+  async function analyze(list?: Ranked[]) {
+    const cur = list ?? hits;
+    if (!cur?.length) return;
+    setBusy(t("busca.analyzing"));
+    setErr("");
+    try {
+      const top = cur.slice(0, 24);
+      const user =
+        `Alvo da busca: "${q}".\nItens:\n` +
+        top.map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") +
+        `\nResponda SO JSON: {"itens":[{"i":0,"s":"positivo|negativo|neutro"}]}`;
+      const sys = "Voce e analista de campanha. Classifique o SENTIMENTO de cada item EM RELACAO ao alvo: positivo=elogio/apoio, negativo=critica/ataque/mentira, neutro=informativo. So JSON.";
+      const raw = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: true });
+      const data = JSON.parse(raw);
+      const map: Record<number, Sent> = {};
+      for (const it of data.itens || []) {
+        const s = String(it.s || "").toLowerCase();
+        map[it.i] = s.startsWith("pos") ? "pos" : s.startsWith("neg") ? "neg" : "neu";
+      }
+      const tagged = cur.map((h, i) => (i < 24 ? { ...h, sent: map[i] ?? h.sent } : h));
+      setHits(tagged);
+      return tagged;
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // ----- Modo Crise: ordena por engajamento, busca, analisa, filtra negativos -----
+  async function crisis() {
+    setSort("likes");
+    await run({ sort: "likes" });
+    const tagged = await analyze();
+    if (tagged) setSentFilter("neg");
+  }
+
+  // ----- IA: resumo de inteligência -----
+  async function summarize() {
+    if (!hits?.length) return;
+    setBusy(t("busca.summarizing"));
+    setErr("");
+    try {
+      const top = hits.slice(0, 20);
+      const user =
+        `Alvo: "${q}". Resultados:\n` +
+        top.map((h, i) => `[${i}] ${h.title} (${h.source}${h.sent ? ", " + h.sent : ""}) — ${h.snippet}`).join("\n") +
+        `\n\nEscreva em PT-BR, objetivo, SEM inventar:\n1) NARRATIVAS POSITIVAS (bullets)\n2) ATAQUES / MENTIRAS (bullets, e o que responder em cada)\n3) RESPOSTA URGENTE (1-3 itens que mais precisam)`;
+      const sys = "Voce e analista de inteligencia de campanha. Resuma so com base nos resultados dados.";
+      const text = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: false });
+      setSummary(text);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function dossier() {
+    if (!hits?.length) return;
+    const sLabel = (s?: Sent) => (s === "pos" ? "positivo" : s === "neg" ? "negativo" : s === "neu" ? "neutro" : "");
+    const bytes = exportDossierPdf({
+      title: t("busca.dossierTitle", { q }),
+      subtitle: `${new Date().toLocaleString()} · ${hits.length} ${t("busca.results0")}`,
+      summary: summary || "",
+      rows: hits.map((h) => ({ title: h.title, link: h.link, source: h.source, date: h.date, sent: sLabel(h.sent), snippet: h.snippet })),
+      colTitle: t("busca.dTitle"), colSource: t("busca.dSource"), colSent: t("busca.dSent"), colSnippet: t("busca.dSnippet"),
+      summaryLabel: t("busca.summaryTitle"), footer: t("posts.pdfFooter", { date: new Date().toLocaleString() }),
+    });
+    saveBytes(bytes, `codexig-dossie-${q.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 24) || "busca"}.pdf`, "pdf", "PDF");
+  }
+
   function exportCsv() {
     if (!hits?.length) return;
     const esc = (s: string) => `"${(s || "").replace(/"/g, '""')}"`;
-    const rows = ["titulo,link,fonte,data,trecho"];
-    hits.forEach((h) => rows.push([h.title, h.link, h.source, h.date, h.snippet].map(esc).join(",")));
-    const safe = q.replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 24) || "busca";
-    saveBytes(new TextEncoder().encode("﻿" + rows.join("\r\n")), `codexig-busca-${safe}.csv`);
+    const rows = ["titulo,link,fonte,data,sentimento,curtidas,comentarios,trecho"];
+    hits.forEach((h) => rows.push([h.title, h.link, h.source, h.date, h.sent || "", String(h.likes), String(h.comments), h.snippet].map(esc).join(",")));
+    saveBytes(new TextEncoder().encode("﻿" + rows.join("\r\n")), `codexig-busca.csv`, "csv", "CSV");
   }
   function copyList() {
     if (!hits?.length) return;
     navigator.clipboard.writeText(hits.map((h) => `${h.title}\n${h.link}`).join("\n\n"));
   }
 
-  const ScopeBtn = ({ s, label }: { s: Scope; label: string }) => (
-    <button
-      onClick={() => setScope(s)}
-      className={"rounded-lg px-3 py-1.5 text-[12.5px] font-bold transition " + (scope === s ? "bg-[var(--color-teal)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)] hover:text-[var(--color-paper)]")}
-    >
-      {label}
-    </button>
-  );
+  // ----- Monitor salvo -----
+  function saveMonitor() {
+    const v = q.trim();
+    if (!v || presets.includes(v)) return;
+    const next = [v, ...presets].slice(0, 12);
+    setPresets(next);
+    localStorage.setItem("codexig_monitor", JSON.stringify(next));
+  }
+  function delMonitor(p: string) {
+    const next = presets.filter((x) => x !== p);
+    setPresets(next);
+    localStorage.setItem("codexig_monitor", JSON.stringify(next));
+  }
+
+  const shown = (hits || []).filter((h) => sentFilter === "all" || (sentFilter === "neg" ? h.sent === "neg" : h.sent === "pos"));
+  const sentColor = (s?: Sent) => (s === "pos" ? "text-[#3ad07a]" : s === "neg" ? "text-[var(--color-coral2)]" : s === "neu" ? "text-[var(--color-slate)]" : "");
 
   return (
     <div className="space-y-5">
@@ -105,63 +210,96 @@ export default function Busca() {
             placeholder={t("busca.ph")}
             className="min-w-0 flex-1 rounded-xl border border-[var(--color-line)] bg-[#090d15] px-4 py-2.5 text-[14px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
           />
-          <button onClick={run} disabled={loading} className="shrink-0 rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
+          <button onClick={() => run()} disabled={loading} className="shrink-0 rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
             {loading ? t("busca.searching") : t("busca.search")}
           </button>
+          <button onClick={saveMonitor} title={t("busca.saveMonitor")} className="shrink-0 rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2.5 text-[13px] font-bold text-[var(--color-teal2)]">★</button>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.scope")}:</span>
-          <ScopeBtn s="all" label={t("busca.all")} />
-          <ScopeBtn s="instagram" label="Instagram" />
-          <ScopeBtn s="news" label={t("busca.news")} />
+
+        {/* filtros */}
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+          <Field label={t("busca.kind")}>
+            <Select ariaLabel={t("busca.kind")} value={kind} onChange={(v) => setKind(v as Kind)} options={[
+              { value: "search", label: t("busca.kWeb") }, { value: "videos", label: t("busca.kVideos") }, { value: "images", label: t("busca.kImages") }, { value: "news", label: t("busca.kNews") }, { value: "places", label: t("busca.kPlaces") },
+            ]} />
+          </Field>
+          <Field label={t("busca.net")}>
+            <Select ariaLabel={t("busca.net")} value={net} onChange={(v) => setNet(v as Net)} options={[
+              { value: "all", label: t("busca.nAll") }, { value: "instagram", label: "Instagram" }, { value: "facebook", label: "Facebook" }, { value: "x", label: "X / Twitter" }, { value: "youtube", label: "YouTube" }, { value: "tiktok", label: "TikTok" },
+            ]} />
+          </Field>
+          <Field label={t("busca.period")}>
+            <Select ariaLabel={t("busca.period")} value={period} onChange={(v) => setPeriod(v as Period)} options={[
+              { value: "", label: t("busca.pAny") }, { value: "d", label: t("busca.p24h") }, { value: "w", label: t("busca.p7d") }, { value: "m", label: t("busca.pMonth") }, { value: "y", label: t("busca.pYear") },
+            ]} />
+          </Field>
+          <Field label={t("busca.sort")}>
+            <Select ariaLabel={t("busca.sort")} value={sort} onChange={(v) => setSort(v as Sort)} options={[
+              { value: "rel", label: t("busca.sRel") }, { value: "recent", label: t("busca.sRecent") }, { value: "old", label: t("busca.sOld") }, { value: "likes", label: t("busca.sLikes") }, { value: "comments", label: t("busca.sComments") },
+            ]} />
+          </Field>
         </div>
-        <div className="mt-3 flex flex-wrap gap-4">
-          <div className="min-w-[150px]">
-            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.period")}</span>
-            <Select
-              ariaLabel={t("busca.period")}
-              value={period}
-              onChange={(v) => setPeriod(v as Period)}
-              options={[
-                { value: "", label: t("busca.pAny") },
-                { value: "d", label: t("busca.p24h") },
-                { value: "w", label: t("busca.p7d") },
-                { value: "m", label: t("busca.pMonth") },
-                { value: "y", label: t("busca.pYear") },
-              ]}
-            />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder={t("busca.excludePh")} className="w-44 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-1.5 text-[12px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
+          <label className="flex items-center gap-2 text-[12px] text-[var(--color-slate)]">
+            <input type="checkbox" checked={onlyEng} onChange={(e) => setOnlyEng(e.target.checked)} className="accent-[var(--color-teal)]" />
+            {t("busca.onlyEng")}
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")}</p>
+
+        {/* monitor salvo */}
+        {presets.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.monitor")}:</span>
+            {presets.map((p) => (
+              <span key={p} className="group inline-flex items-center gap-1 rounded-full border border-[var(--color-steel)] bg-[#0e1522] px-2.5 py-1 text-[12px]">
+                <button onClick={() => { setQ(p); setTimeout(() => run(), 0); }} className="text-[var(--color-paper)] pii">{p}</button>
+                <button onClick={() => delMonitor(p)} className="text-[var(--color-slate)] hover:text-[var(--color-coral2)]">×</button>
+              </span>
+            ))}
           </div>
-          <div className="min-w-[170px]">
-            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.sort")}</span>
-            <Select
-              ariaLabel={t("busca.sort")}
-              value={sort}
-              onChange={(v) => setSort(v as Sort)}
-              options={[
-                { value: "rel", label: t("busca.sRel") },
-                { value: "recent", label: t("busca.sRecent") },
-                { value: "old", label: t("busca.sOld") },
-                { value: "likes", label: t("busca.sLikes") },
-                { value: "comments", label: t("busca.sComments") },
-              ]}
-            />
-          </div>
+        )}
+
+        {/* barra de inteligência */}
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-line)] pt-3">
+          <button onClick={crisis} disabled={!!busy || loading} className="rounded-lg bg-[linear-gradient(135deg,#ff4d3d,#ff8a5c)] px-3.5 py-2 text-[12.5px] font-bold text-[#1a0a08] disabled:opacity-40">{t("busca.crisis")}</button>
+          <button onClick={() => analyze()} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
+          <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
+          <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
+          {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
-        <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")}</p>
       </div>
 
-      {err && (
-        <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>
+      {err && <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>}
+
+      {summary && (
+        <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[13px] font-bold text-[var(--color-teal2)]">{t("busca.summaryTitle")}</span>
+            <button onClick={() => setSummary(null)} className="text-[12px] text-[var(--color-slate)]">×</button>
+          </div>
+          <p className="selectable whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-ink)]">{summary}</p>
+        </div>
       )}
 
-      {loading && (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-20" />)}</div>
-      )}
+      {loading && <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-20" />)}</div>}
 
       {!loading && hits && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[var(--color-slate)]">{t("busca.found", { n: nf(hits.length) })}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-[var(--color-slate)]">{t("busca.found", { n: nf(shown.length) })}</span>
+              {hits.some((h) => h.sent) && (
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--color-line)] p-0.5">
+                  {(["all", "neg", "pos"] as const).map((f) => (
+                    <button key={f} onClick={() => setSentFilter(f)} className={"rounded px-2 py-0.5 text-[11.5px] font-bold " + (sentFilter === f ? "bg-[var(--color-teal)] text-[#04120f]" : "text-[var(--color-slate)]")}>
+                      {f === "all" ? t("busca.fAll") : f === "neg" ? t("busca.fNeg") : t("busca.fPos")}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {hits.length > 0 && (
               <div className="flex gap-2">
                 <button onClick={copyList} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.copy")}</button>
@@ -169,23 +307,18 @@ export default function Busca() {
               </div>
             )}
           </div>
-          {hits.length === 0 ? (
+          {shown.length === 0 ? (
             <div className="rounded-xl border border-[var(--color-line)] bg-[#090d15] p-6 text-center text-[13px] text-[var(--color-slate)]">{t("busca.empty")}</div>
           ) : (
             <div className="stagger space-y-2">
-              {hits.map((h, i) => (
-                <a
-                  key={h.link + i}
-                  href={h.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] hover:-translate-y-0.5"
-                >
+              {shown.map((h, i) => (
+                <a key={h.link + i} href={h.link} target="_blank" rel="noreferrer" className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] hover:-translate-y-0.5">
                   {h.image ? <img src={h.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : null}
                   <div className="min-w-0">
                     <div className="truncate text-[14px] font-bold text-[var(--color-teal2)]">{h.title || h.link}</div>
                     <div className="flex flex-wrap items-center gap-x-2 truncate text-[11.5px] text-[var(--color-slate)]">
                       <span>{h.source}{h.date ? ` · ${h.date}` : ""}</span>
+                      {h.sent ? <span className={"font-bold " + sentColor(h.sent)}>{h.sent === "pos" ? t("busca.sPos") : h.sent === "neg" ? t("busca.sNeg") : t("busca.sNeu")}</span> : null}
                       {h.likes > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.likes)} {t("busca.likes")}</span> : null}
                       {h.comments > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.comments)} {t("busca.comments")}</span> : null}
                     </div>
@@ -197,6 +330,15 @@ export default function Busca() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{label}</span>
+      {children}
     </div>
   );
 }
