@@ -8,7 +8,7 @@ import { exportDossierPdf } from "../pdf";
 type Hit = { title: string; link: string; snippet: string; source: string; date: string; image: string };
 type Sent = "pos" | "neg" | "neu";
 type Ranked = Hit & { likes: number; comments: number; sent?: Sent };
-type Kind = "search" | "videos" | "images" | "news" | "places";
+type Kind = "any" | "search" | "videos" | "images" | "news" | "places";
 type Net = "all" | "instagram" | "facebook" | "x" | "youtube" | "tiktok";
 type Period = "" | "d" | "w" | "m" | "y";
 type Sort = "rel" | "recent" | "old" | "likes" | "comments";
@@ -46,7 +46,7 @@ export default function Busca() {
   const groqKey = () => localStorage.getItem("codexig_groq") || "";
 
   const [q, setQ] = useState("");
-  const [kind, setKind] = useState<Kind>("search");
+  const [kind, setKind] = useState<Kind>("any");
   const [net, setNet] = useState<Net>("all");
   const [period, setPeriod] = useState<Period>("");
   const [sort, setSort] = useState<Sort>("rel");
@@ -84,7 +84,19 @@ export default function Busca() {
       const tbsParts: string[] = [];
       if (period) tbsParts.push(`qdr:${period}`);
       if (useSort === "recent") tbsParts.push("sbd:1");
-      const r = await invoke<Hit[]>("web_search", { query, key: serperKey().trim(), endpoint: kind, num: 30, site: undefined, tbs: tbsParts.join(",") });
+      const tbs = tbsParts.join(",");
+      const k = serperKey().trim();
+      const call = (endpoint: string, num: number) => invoke<Hit[]>("web_search", { query, key: k, endpoint, num, site: undefined, tbs });
+      let r: Hit[];
+      if (kind === "any") {
+        // "Qualquer" = puxa de varios tipos e junta (dedup por link); os outros filtros mandam
+        const arrs = await Promise.all(["search", "news", "videos"].map((ep) => call(ep, 20).catch(() => [] as Hit[])));
+        const seen = new Set<string>();
+        r = [];
+        for (const a of arrs) for (const h of a) if (h.link && !seen.has(h.link)) { seen.add(h.link); r.push(h); }
+      } else {
+        r = await call(kind, 30);
+      }
       const ranked: Ranked[] = r.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
       setHits(applyClient(ranked));
       setSentFilter("all");
@@ -220,7 +232,7 @@ export default function Busca() {
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <Field label={t("busca.kind")}>
             <Select ariaLabel={t("busca.kind")} value={kind} onChange={(v) => setKind(v as Kind)} options={[
-              { value: "search", label: t("busca.kWeb") }, { value: "videos", label: t("busca.kVideos") }, { value: "images", label: t("busca.kImages") }, { value: "news", label: t("busca.kNews") }, { value: "places", label: t("busca.kPlaces") },
+              { value: "any", label: t("busca.kAny") }, { value: "search", label: t("busca.kWeb") }, { value: "videos", label: t("busca.kVideos") }, { value: "images", label: t("busca.kImages") }, { value: "news", label: t("busca.kNews") }, { value: "places", label: t("busca.kPlaces") },
             ]} />
           </Field>
           <Field label={t("busca.net")}>
