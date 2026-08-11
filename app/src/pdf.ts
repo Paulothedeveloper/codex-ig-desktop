@@ -117,6 +117,104 @@ export function exportInteractionsPdf(opts: {
   return new Uint8Array(doc.output("arraybuffer"));
 }
 
+// ---- Dossie de BUSCA (Monitor): resumo de inteligencia (IA) + tabela de resultados ----
+type DRow = { title: string; link: string; source: string; date: string; sent: string; snippet: string };
+
+export function exportDossierPdf(opts: {
+  title: string;
+  subtitle: string;
+  summary: string;
+  summaryLabel: string;
+  rows: DRow[];
+  colTitle: string;
+  colSource: string;
+  colSent: string;
+  colSnippet: string;
+  footer: string;
+}): Uint8Array {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(...DARK);
+  doc.rect(0, 0, W, 56, "F");
+  doc.setDrawColor(...TEAL_HEAD);
+  doc.setLineWidth(3);
+  doc.line(34, 38, 47, 20);
+  doc.line(47, 20, 55, 30);
+  doc.setFillColor(...CORAL);
+  doc.circle(55, 30, 3, "F");
+  doc.setTextColor(...TEAL_HEAD);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("Codex IG", 66, 28);
+  doc.setTextColor(200, 205, 212);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("GROWTH SUITE", 66, 40);
+
+  const title = clean(opts.title).slice(0, 140) || "Dossie";
+  doc.setTextColor(...DARK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  const tl = doc.splitTextToSize(title, W - 80).slice(0, 2) as string[];
+  let y = 80;
+  doc.text(tl, 40, y);
+  y += tl.length * 16 + 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SLATE);
+  doc.text(clean(opts.subtitle), 40, y);
+  y += 16;
+
+  const foot = (d: jsPDF) => {
+    d.setFontSize(7.5);
+    d.setTextColor(...SLATE);
+    d.text(clean(opts.footer), 40, H - 20);
+    d.text(String(d.getNumberOfPages()), W - 40, H - 20, { align: "right" });
+  };
+
+  // resumo de inteligencia (IA) — bloco de texto
+  if (opts.summary.trim()) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...TEAL);
+    doc.text(clean(opts.summaryLabel), 40, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...DARK);
+    const lines = doc.splitTextToSize(clean(opts.summary), W - 80) as string[];
+    for (const ln of lines) {
+      if (y > H - 40) { doc.addPage(); y = 60; }
+      doc.text(ln, 40, y);
+      y += 12;
+    }
+    y += 8;
+  }
+
+  if (y > H - 120) { doc.addPage(); y = 60; }
+  autoTable(doc, {
+    startY: y,
+    head: [["#", clean(opts.colTitle), clean(opts.colSource), clean(opts.colSent), clean(opts.colSnippet)]],
+    body: opts.rows.map((r, i) => [
+      String(i + 1),
+      clean(r.title).slice(0, 90),
+      clean(`${r.source}${r.date ? " · " + r.date : ""}`),
+      clean(r.sent),
+      clean(r.snippet).slice(0, 180),
+    ]),
+    headStyles: { fillColor: TEAL_HEAD, textColor: [255, 255, 255], fontStyle: "bold" },
+    styles: { fontSize: 8, cellPadding: 3, textColor: DARK, overflow: "linebreak", valign: "top" },
+    alternateRowStyles: { fillColor: [244, 247, 246] },
+    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 130 }, 2: { cellWidth: 90 }, 3: { cellWidth: 48 } },
+    margin: { left: 40, right: 40, top: 60 },
+    didDrawPage: () => foot(doc),
+  });
+
+  return new Uint8Array(doc.output("arraybuffer"));
+}
+
 // ---- Relatorio UNIFICADO: 1 PDF, 1 linha por pessoa (dedup), curtidas + comentarios (com TEXTO) ----
 export type UniPost = { label: string; sub: string }; // "#1", "12 jul · legenda…"
 export type UniRow = {
