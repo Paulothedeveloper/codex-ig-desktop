@@ -49,6 +49,16 @@ function igShortcode(link: string): string | null {
   return m ? m[1] : null;
 }
 
+// histórico de buscas (volume + % de ataque no tempo) — acumula no localStorage
+type HistEntry = { term: string; ts: number; count: number; neg?: number };
+const loadHist = (): HistEntry[] => JSON.parse(localStorage.getItem("codexig_history") || "[]");
+function pushHist(e: HistEntry) { localStorage.setItem("codexig_history", JSON.stringify([...loadHist(), e].slice(-300))); }
+function updateLastNeg(term: string, neg: number) {
+  const h = loadHist();
+  for (let i = h.length - 1; i >= 0; i--) if (h[i].term === term) { h[i].neg = neg; break; }
+  localStorage.setItem("codexig_history", JSON.stringify(h));
+}
+
 async function saveBytes(bytes: Uint8Array, name: string, ext: string, filterName: string) {
   const path = await save({ defaultPath: name, filters: [{ name: filterName, extensions: [ext] }] });
   if (!path) return;
@@ -77,6 +87,7 @@ export default function Busca() {
   const [presets, setPresets] = useState<string[]>(JSON.parse(localStorage.getItem("codexig_monitor") || "[]"));
   const [reply, setReply] = useState<{ h: Ranked; text: string } | null>(null);
   const [inter, setInter] = useState<{ title: string; loading: boolean; err: string; likers: IgUser[]; comments: IComment[] } | null>(null);
+  const [histOpen, setHistOpen] = useState(false);
   const [cmp, setCmp] = useState<{ open: boolean; input: string; busy: string; rows: { term: string; total: number; negPct: number; sample: string }[] | null }>({ open: false, input: "", busy: "", rows: null });
 
   function applyClient(list: Ranked[]): Ranked[] {
@@ -118,6 +129,7 @@ export default function Busca() {
       const ranked: Ranked[] = r.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
       setHits(applyClient(ranked));
       setSentFilter("all");
+      pushHist({ term: q.trim(), ts: Date.now(), count: r.length });
     } catch (e) {
       setErr(String(e));
       setHits(null);
@@ -148,6 +160,8 @@ export default function Busca() {
       }
       const tagged = cur.map((h, i) => (i < 24 ? { ...h, sent: map[i] ?? h.sent } : h));
       setHits(tagged);
+      const withSent = tagged.filter((h) => h.sent);
+      if (withSent.length) updateLastNeg(q.trim(), Math.round((withSent.filter((h) => h.sent === "neg").length / withSent.length) * 100));
       return tagged;
     } catch (e) {
       setErr(String(e));
@@ -356,6 +370,7 @@ export default function Busca() {
           <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
           <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
           <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
+          <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
       </div>
@@ -483,6 +498,55 @@ export default function Busca() {
           </div>
         </div>
       )}
+
+      {/* modal: histórico / timeline */}
+      {histOpen && (() => {
+        const hist = loadHist();
+        const byTerm: Record<string, HistEntry[]> = {};
+        for (const e of hist) (byTerm[e.term] = byTerm[e.term] || []).push(e);
+        const terms = Object.keys(byTerm).reverse();
+        const dt = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
+        return (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
+            <div className="pop flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.historyTitle")}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => { localStorage.removeItem("codexig_history"); setHistOpen(false); }} className="text-[12px] text-[var(--color-slate)] hover:text-[var(--color-coral2)]">{t("busca.clearHist")}</button>
+                  <button onClick={() => setHistOpen(false)} className="text-[13px] text-[var(--color-slate)]">×</button>
+                </div>
+              </div>
+              {terms.length === 0 ? (
+                <p className="p-3 text-[13px] text-[var(--color-slate)]">{t("busca.histEmpty")}</p>
+              ) : (
+                <div className="min-h-0 flex-1 space-y-4 overflow-auto">
+                  {terms.map((term) => {
+                    const es = byTerm[term].slice(-24);
+                    const max = Math.max(1, ...es.map((e) => e.count));
+                    const last = es[es.length - 1];
+                    return (
+                      <div key={term} className="rounded-xl border border-[var(--color-line)] bg-[#090d15] p-3">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="truncate text-[13px] font-bold text-[var(--color-paper)] pii">{term}</span>
+                          <span className="text-[11.5px] text-[var(--color-slate)]">{es.length} {t("busca.histRuns")}{last.neg != null ? ` · ${last.neg}% ${t("busca.sNeg")}` : ""}</span>
+                        </div>
+                        <div className="flex items-end gap-1" style={{ height: 44 }}>
+                          {es.map((e, i) => (
+                            <div key={i} title={`${dt(e.ts)} · ${e.count}${e.neg != null ? ` · ${e.neg}% ataque` : ""}`}
+                              className="w-full min-w-[4px] rounded-sm"
+                              style={{ height: `${Math.max(8, (e.count / max) * 44)}px`, background: e.neg != null && e.neg >= 40 ? "var(--color-coral)" : "var(--color-teal-dim)" }} />
+                          ))}
+                        </div>
+                        <div className="mt-1 flex justify-between text-[10px] text-[var(--color-slate)]"><span>{dt(es[0].ts)}</span><span>{dt(last.ts)}</span></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* modal: comparar candidatos */}
       {cmp.open && (
