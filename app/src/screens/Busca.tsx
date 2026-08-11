@@ -46,7 +46,8 @@ export default function Busca() {
     const esc = (s: string) => `"${(s || "").replace(/"/g, '""')}"`;
     const rows = ["titulo,link,fonte,data,trecho"];
     hits.forEach((h) => rows.push([h.title, h.link, h.source, h.date, h.snippet].map(esc).join(",")));
-    saveBytes(new TextEncoder().encode("﻿" + rows.join("\r\n")), `codexig-busca-${q.slice(0, 20)}.csv`);
+    const safe = q.replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 24) || "busca";
+    saveBytes(new TextEncoder().encode("﻿" + rows.join("\r\n")), `codexig-busca-${safe}.csv`);
   }
   function copyList() {
     if (!hits?.length) return;

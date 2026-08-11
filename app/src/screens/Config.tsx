@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS, type Lang } from "../i18n";
 import { useConfirm } from "../Confirm";
 import { privacyOn, setPrivacy } from "../privacy";
@@ -26,12 +27,12 @@ export default function Config() {
     if (!(await confirm({ body: t("config.clearWlConfirm"), danger: true }))) return;
     localStorage.setItem(WL_KEY, "[]"); setWl([]);
   }
-  function exportWl() {
-    const csv = "pk\n" + wl.join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = "codexig-whitelist.csv"; a.click();
-    URL.revokeObjectURL(a.href);
+  async function exportWl() {
+    // Tauri não faz download de browser (a.click = no-op) — diálogo nativo + escrita no Rust.
+    const bytes = new TextEncoder().encode("﻿pk\r\n" + wl.join("\r\n"));
+    const path = await save({ defaultPath: "codexig-whitelist.csv", filters: [{ name: "CSV", extensions: ["csv"] }] });
+    if (!path) return;
+    await invoke("write_bytes", { path, bytes: Array.from(bytes) });
   }
 
   return (
