@@ -26,10 +26,12 @@ export default function Busca() {
     setLoading(true);
     setErr("");
     try {
-      const query = scope === "instagram" ? `site:instagram.com ${q}` : q;
+      // Serper grátis NÃO deixa usar `site:` → pro Instagram busca "termo instagram" e filtra o domínio no Rust.
+      const query = scope === "instagram" ? `${q} instagram` : q;
       const endpoint = scope === "news" ? "news" : "search";
+      const site = scope === "instagram" ? "instagram.com" : undefined;
       // passa a chave do Config (pode estar vazia — o Rust cai no arquivo local do Paulo)
-      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 20 });
+      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 30, site });
       setHits(r);
     } catch (e) {
       setErr(String(e));
