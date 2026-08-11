@@ -21,7 +21,7 @@ async function saveBytes(bytes: Uint8Array, defaultName: string, filterName: str
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Post = { id: string; code: string; thumb: string; like: number; cmt: number; views: number; reshares: number; saves: number; taken_at: number; caption: string };
-type Comment = { user: IgUser; text: string; likes: number; created_at: number };
+type Comment = { user: IgUser; text: string; likes: number; created_at: number; cls?: string };
 
 function UserRow({ u }: { u: IgUser }) {
   return (
@@ -61,6 +61,8 @@ export default function Posts() {
   const [sel, setSel] = useState<Post | null>(null);
   const [likers, setLikers] = useState<IgUser[] | null>(null);
   const [comments, setComments] = useState<Comment[] | null>(null);
+  const [classifying, setClassifying] = useState(false);
+  const [clsFilter, setClsFilter] = useState("all");
   const [dLoading, setDLoading] = useState(false);
   const [dErr, setDErr] = useState("");
   const [view, setView] = useState<"likes" | "comments" | "reshares">("likes");
@@ -91,6 +93,7 @@ export default function Posts() {
       : [...comments].sort((a, b) => b.created_at - a.created_at);
     return f ? base.filter((c) => matchU(c.user) || norm(c.text).includes(f)) : base;
   }, [comments, sortC, f]);
+  const commentsShown = useMemo(() => (clsFilter === "all" ? commentsSorted : commentsSorted.filter((c) => c.cls === clsFilter)), [commentsSorted, clsFilter]);
 
   const pickIds = Object.keys(picks);
 
@@ -238,6 +241,30 @@ export default function Posts() {
       setDErr(String(e));
     } finally {
       setDLoading(false);
+    }
+  }
+
+  // Segmenta comentários por IA (apoio/dúvida/ataque/pedido) — o "grupo de inteligência" responde por categoria.
+  async function classifyComments() {
+    if (!comments?.length) return;
+    setClassifying(true);
+    setDErr("");
+    try {
+      const key = localStorage.getItem("codexig_groq") || "";
+      const top = comments.slice(0, 40);
+      const user = "Classifique cada comentario em uma palavra: apoio, duvida, ataque ou pedido. So JSON {\"itens\":[{\"i\":0,\"c\":\"apoio\"}]}.\n" + top.map((c, i) => `[${i}] ${c.text}`).join("\n");
+      const raw = await invoke<string>("ai_chat", { system: "Voce classifica comentarios de campanha. So JSON.", user, key, json: true });
+      const data = JSON.parse(raw);
+      const map: Record<number, string> = {};
+      for (const it of data.itens || []) {
+        const v = String(it.c ?? it.classificacao ?? "").toLowerCase();
+        map[it.i] = v.includes("apoi") ? "apoio" : v.includes("ataq") ? "ataque" : v.includes("pedi") ? "pedido" : v.includes("duv") || v.includes("dúv") ? "duvida" : "";
+      }
+      setComments(comments.map((c, i) => (i < 40 ? { ...c, cls: map[i] || c.cls } : c)));
+    } catch (e) {
+      setDErr(String(e));
+    } finally {
+      setClassifying(false);
     }
   }
 
@@ -449,6 +476,16 @@ export default function Posts() {
                     {f && <span className="text-[var(--color-teal2)]">{t("posts.filtering", { n: view === "likes" ? likersSorted.length : commentsSorted.length })}</span>}
                   </div>
 
+                  {/* segmentar comentários por IA (apoio/dúvida/ataque/pedido) */}
+                  {view === "comments" && comments && comments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                      <button onClick={classifyComments} disabled={classifying} className="rounded-md border border-[var(--color-steel)] bg-[#0e1522] px-2.5 py-1 font-bold text-[var(--color-teal2)] disabled:opacity-50">{classifying ? t("posts.classifying") : t("posts.classify")}</button>
+                      {comments.some((c) => c.cls) && ["all", "apoio", "duvida", "pedido", "ataque"].map((fk) => (
+                        <button key={fk} onClick={() => setClsFilter(fk)} className={"rounded-md px-2 py-1 font-bold " + (clsFilter === fk ? "bg-[var(--color-teal)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)]")}>{t("posts.cls_" + fk)}</button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* transparência: puxado vs contador do IG */}
                   {view === "likes" && likers && sel.like > likers.length && (
                     <p className="mb-2 rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[11px] leading-snug text-[var(--color-slate)]">
@@ -485,14 +522,15 @@ export default function Posts() {
                   ) : (
                     <p className="p-3 text-[13px] text-[var(--color-slate)]">{t("posts.emptyLikes")}</p>
                   )
-                ) : commentsSorted.length > 0 ? (
-                  commentsSorted.map((c, i) => (
+                ) : commentsShown.length > 0 ? (
+                  commentsShown.map((c, i) => (
                     <div key={c.user.pk + i} className="rounded-lg px-2 py-1.5 hover:bg-white/5">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="flex min-w-0 items-baseline gap-1.5">
                           <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="shrink-0 text-[13px] font-semibold pii">@{c.user.username}</a>
                           {c.user.full ? <span className="truncate text-[12px] text-[var(--color-slate)] pii">· {c.user.full}</span> : null}
                           {c.user.verif ? <span className="shrink-0 text-[11px] text-[var(--color-teal)]">✓</span> : null}
+                          {c.cls ? <span className={"shrink-0 rounded px-1.5 text-[10px] font-bold " + (c.cls === "ataque" ? "bg-[#2a100d] text-[var(--color-coral2)]" : c.cls === "apoio" ? "bg-[#0e2a1c] text-[#3ad07a]" : "bg-[#0e1f2a] text-[var(--color-teal2)]")}>{t("posts.cls_" + c.cls)}</span> : null}
                         </span>
                         <span className="shrink-0 text-[10.5px] text-[var(--color-slate)] tabular-nums">{dtt(c.created_at)}</span>
                       </div>
