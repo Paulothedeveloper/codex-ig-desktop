@@ -2,9 +2,27 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../i18n";
+import { Select } from "../Select";
 
 type Hit = { title: string; link: string; snippet: string; source: string; date: string; image: string };
+type Ranked = Hit & { likes: number; comments: number };
 type Scope = "all" | "instagram" | "news";
+type Period = "" | "d" | "w" | "m" | "y";
+type Sort = "rel" | "recent" | "old" | "likes" | "comments";
+
+// tira curtidas/comentários do trecho (ex "702 likes, 91 comments" · "1.2K likes") pra ordenar
+function parseCount(snippet: string, kind: "likes" | "comments"): number {
+  const re = kind === "likes"
+    ? /([\d.,]+)\s*(k|m|mil)?\s*(?:likes|curtidas)/i
+    : /([\d.,]+)\s*(k|m|mil)?\s*(?:comments|coment)/i;
+  const m = snippet.match(re);
+  if (!m) return 0;
+  const suf = (m[2] || "").toLowerCase();
+  let n = suf
+    ? parseFloat(m[1].replace(",", ".")) * (suf === "m" ? 1e6 : 1e3)
+    : parseInt(m[1].replace(/[.,]/g, ""), 10);
+  return Math.round(n) || 0;
+}
 
 async function saveBytes(bytes: Uint8Array, name: string) {
   const path = await save({ defaultPath: name, filters: [{ name: "CSV", extensions: ["csv"] }] });
@@ -16,7 +34,9 @@ export default function Busca() {
   const { t, nf } = useI18n();
   const [q, setQ] = useState("");
   const [scope, setScope] = useState<Scope>("all");
-  const [hits, setHits] = useState<Hit[] | null>(null);
+  const [period, setPeriod] = useState<Period>("");
+  const [sort, setSort] = useState<Sort>("rel");
+  const [hits, setHits] = useState<Ranked[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const key = () => localStorage.getItem("codexig_serper") || "";
@@ -30,9 +50,19 @@ export default function Busca() {
       const query = scope === "instagram" ? `${q} instagram` : q;
       const endpoint = scope === "news" ? "news" : "search";
       const site = scope === "instagram" ? "instagram.com" : undefined;
+      // tbs do Google: período (qdr) + ordenar por data (sbd:1)
+      const tbsParts: string[] = [];
+      if (period) tbsParts.push(`qdr:${period}`);
+      if (sort === "recent") tbsParts.push("sbd:1");
+      const tbs = tbsParts.join(",");
       // passa a chave do Config (pode estar vazia — o Rust cai no arquivo local do Paulo)
-      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 30, site });
-      setHits(r);
+      const r = await invoke<Hit[]>("web_search", { query, key: key().trim(), endpoint, num: 30, site, tbs });
+      // extrai curtidas/comentários do trecho + ordena client-side (o que o Google não ordena)
+      const ranked: Ranked[] = r.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
+      if (sort === "likes") ranked.sort((a, b) => b.likes - a.likes);
+      else if (sort === "comments") ranked.sort((a, b) => b.comments - a.comments);
+      else if (sort === "old") ranked.reverse();
+      setHits(ranked);
     } catch (e) {
       setErr(String(e));
       setHits(null);
@@ -85,7 +115,39 @@ export default function Busca() {
           <ScopeBtn s="instagram" label="Instagram" />
           <ScopeBtn s="news" label={t("busca.news")} />
         </div>
-        <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")}</p>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <div className="min-w-[150px]">
+            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.period")}</span>
+            <Select
+              ariaLabel={t("busca.period")}
+              value={period}
+              onChange={(v) => setPeriod(v as Period)}
+              options={[
+                { value: "", label: t("busca.pAny") },
+                { value: "d", label: t("busca.p24h") },
+                { value: "w", label: t("busca.p7d") },
+                { value: "m", label: t("busca.pMonth") },
+                { value: "y", label: t("busca.pYear") },
+              ]}
+            />
+          </div>
+          <div className="min-w-[170px]">
+            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.sort")}</span>
+            <Select
+              ariaLabel={t("busca.sort")}
+              value={sort}
+              onChange={(v) => setSort(v as Sort)}
+              options={[
+                { value: "rel", label: t("busca.sRel") },
+                { value: "recent", label: t("busca.sRecent") },
+                { value: "old", label: t("busca.sOld") },
+                { value: "likes", label: t("busca.sLikes") },
+                { value: "comments", label: t("busca.sComments") },
+              ]}
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")}</p>
       </div>
 
       {err && (
@@ -122,7 +184,11 @@ export default function Busca() {
                   {h.image ? <img src={h.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : null}
                   <div className="min-w-0">
                     <div className="truncate text-[14px] font-bold text-[var(--color-teal2)]">{h.title || h.link}</div>
-                    <div className="truncate text-[11.5px] text-[var(--color-slate)]">{h.source}{h.date ? ` · ${h.date}` : ""}</div>
+                    <div className="flex flex-wrap items-center gap-x-2 truncate text-[11.5px] text-[var(--color-slate)]">
+                      <span>{h.source}{h.date ? ` · ${h.date}` : ""}</span>
+                      {h.likes > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.likes)} {t("busca.likes")}</span> : null}
+                      {h.comments > 0 ? <span className="text-[var(--color-teal2)]">{nf(h.comments)} {t("busca.comments")}</span> : null}
+                    </div>
                     <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{h.snippet}</p>
                   </div>
                 </a>

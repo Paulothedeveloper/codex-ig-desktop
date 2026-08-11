@@ -64,6 +64,7 @@ async fn web_search(
     endpoint: Option<String>,
     num: Option<u32>,
     site: Option<String>,
+    tbs: Option<String>,
 ) -> Result<Vec<SearchHit>, String> {
     // chave: o que veio do Config (localStorage) tem prioridade; se vazio, tenta o arquivo
     // local do Paulo (nunca vai pro repo — so existe na maquina dele). Zero-config no PC dele.
@@ -87,12 +88,16 @@ async fn web_search(
         Some("images") => "images",
         _ => "search",
     };
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "q": query,
         "gl": "br",
         "hl": "pt",
         "num": num.unwrap_or(20).min(100),
     });
+    // tbs = filtro/ordem do Google (qdr:d/w/m/y = periodo; sbd:1 = ordenar por data)
+    if let Some(t) = tbs.as_deref().filter(|s| !s.is_empty()) {
+        body["tbs"] = serde_json::Value::String(t.to_string());
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
