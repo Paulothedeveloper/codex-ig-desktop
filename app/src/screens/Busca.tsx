@@ -34,6 +34,21 @@ function parseCount(snippet: string, kind: "likes" | "comments"): number {
   return Math.round(n) || 0;
 }
 
+type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
+type IComment = { user: IgUser; text: string; likes: number; created_at: number };
+
+// shortcode do IG -> media_id (base64 do proprio IG). Determinístico, sem request.
+const IG_AB = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function shortcodeToId(sc: string): string | null {
+  let n = 0n;
+  for (const c of sc) { const i = IG_AB.indexOf(c); if (i < 0) return null; n = n * 64n + BigInt(i); }
+  return n.toString();
+}
+function igShortcode(link: string): string | null {
+  const m = link.match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
 async function saveBytes(bytes: Uint8Array, name: string, ext: string, filterName: string) {
   const path = await save({ defaultPath: name, filters: [{ name: filterName, extensions: [ext] }] });
   if (!path) return;
@@ -61,6 +76,7 @@ export default function Busca() {
   const [summary, setSummary] = useState<string | null>(null);
   const [presets, setPresets] = useState<string[]>(JSON.parse(localStorage.getItem("codexig_monitor") || "[]"));
   const [reply, setReply] = useState<{ h: Ranked; text: string } | null>(null);
+  const [inter, setInter] = useState<{ title: string; loading: boolean; err: string; likers: IgUser[]; comments: IComment[] } | null>(null);
   const [cmp, setCmp] = useState<{ open: boolean; input: string; busy: string; rows: { term: string; total: number; negPct: number; sample: string }[] | null }>({ open: false, input: "", busy: "", rows: null });
 
   function applyClient(list: Ranked[]): Ranked[] {
@@ -166,6 +182,23 @@ export default function Busca() {
       setErr(String(e));
     } finally {
       setBusy("");
+    }
+  }
+
+  // ----- Cruzar Busca -> Posts: quem curtiu/comentou o post do IG (quem esta por tras) -----
+  async function openInteract(h: Ranked) {
+    const sc = igShortcode(h.link);
+    const id = sc ? shortcodeToId(sc) : null;
+    if (!id) { setErr(t("busca.noPost")); return; }
+    setInter({ title: h.title, loading: true, err: "", likers: [], comments: [] });
+    try {
+      const [likers, comments] = await Promise.all([
+        invoke<IgUser[]>("ig_likers", { mediaId: id }),
+        invoke<IComment[]>("ig_comments", { mediaId: id }),
+      ]);
+      setInter({ title: h.title, loading: false, err: "", likers, comments });
+    } catch (e) {
+      setInter({ title: h.title, loading: false, err: String(e), likers: [], comments: [] });
     }
   }
 
@@ -382,7 +415,8 @@ export default function Busca() {
                       <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{h.snippet}</p>
                     </div>
                   </a>
-                  <div className="flex justify-end border-t border-[var(--color-line)] px-3 py-1.5">
+                  <div className="flex justify-end gap-3 border-t border-[var(--color-line)] px-3 py-1.5">
+                    {igShortcode(h.link) ? <button onClick={() => openInteract(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.whoInteracted")}</button> : null}
                     <button onClick={() => genReply(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.reply")}</button>
                   </div>
                 </div>
@@ -411,6 +445,40 @@ export default function Busca() {
               </>
             ) : (
               <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel h-4" />)}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* modal: quem curtiu/comentou o post do IG (cruzar Busca -> Posts) */}
+      {inter && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
+          <div className="pop flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.whoTitle")}</span>
+              <button onClick={() => setInter(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
+            </div>
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{inter.title}</div>
+            {inter.loading ? (
+              <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skel h-8" />)}</div>
+            ) : inter.err ? (
+              <div className="rounded-lg border border-[#43221d] bg-[#1a0e0c] p-3 text-[12.5px] text-[var(--color-coral2)]">{inter.err}<div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("busca.whoErrHint")}</div></div>
+            ) : (
+              <div className="selectable min-h-0 flex-1 overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-2">
+                <div className="mb-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoLiked")} ({nf(inter.likers.length)})</div>
+                {inter.likers.map((u) => (
+                  <a key={u.pk} href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex items-baseline gap-2 rounded px-1.5 py-1 hover:bg-white/5">
+                    <span className="text-[13px] pii">@{u.username}</span>{u.full ? <span className="truncate text-[12px] text-[var(--color-slate)] pii">· {u.full}</span> : null}
+                  </a>
+                ))}
+                <div className="mb-1 mt-3 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoCommented")} ({nf(inter.comments.length)})</div>
+                {inter.comments.map((c, i) => (
+                  <div key={c.user.pk + i} className="rounded px-1.5 py-1">
+                    <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="text-[13px] font-semibold pii">@{c.user.username}</a>
+                    <p className="text-[12px] text-[var(--color-slate)] pii">{c.text}</p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
