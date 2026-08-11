@@ -63,6 +63,7 @@ async fn web_search(
     key: String,
     endpoint: Option<String>,
     num: Option<u32>,
+    site: Option<String>,
 ) -> Result<Vec<SearchHit>, String> {
     // chave: o que veio do Config (localStorage) tem prioridade; se vazio, tenta o arquivo
     // local do Paulo (nunca vai pro repo — so existe na maquina dele). Zero-config no PC dele.
@@ -102,7 +103,12 @@ async fn web_search(
         .map_err(|e| format!("busca falhou: {e}"))?;
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
-        return Err(format!("busca retornou {code} (chave invalida ou sem creditos?)"));
+        let body = resp.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|j| j["message"].as_str().map(String::from))
+            .unwrap_or(body);
+        return Err(format!("busca {code}: {msg}"));
     }
     let j: serde_json::Value = resp.json().await.map_err(|e| format!("resposta invalida: {e}"))?;
     let host = |url: &str| -> String {
@@ -123,6 +129,11 @@ async fn web_search(
                 image: o["imageUrl"].as_str().or_else(|| o["thumbnailUrl"].as_str()).unwrap_or("").to_string(),
             });
         }
+    }
+    // filtro por dominio (escopo Instagram) — o Serper gratis NAO deixa usar `site:`,
+    // entao busca normal + filtra o dominio aqui.
+    if let Some(s) = site.as_deref().filter(|s| !s.is_empty()) {
+        out.retain(|h| h.link.contains(s));
     }
     Ok(out)
 }
