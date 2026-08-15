@@ -35,6 +35,12 @@ fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// download de browser (a.click/doc.save viram no-op) — export = save-dialog + escrita no Rust.
 #[tauri::command]
 fn write_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    // cria a pasta pai se faltar (a caixa de entrada _INBOX-SALVOS pode nao existir ainda).
+    if let Some(dir) = std::path::Path::new(&path).parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("criar pasta {}: {e}", dir.display()))?;
+        }
+    }
     std::fs::write(&path, &bytes).map_err(|e| format!("escrever {path}: {e}"))
 }
 
@@ -289,6 +295,27 @@ async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Va
     ig_api::raw_get(&app, &url).await
 }
 
+/// SALVOS: lista todos os itens salvos (pro roteador de conhecimento -> vault).
+#[tauri::command]
+async fn ig_saved(app: tauri::AppHandle) -> Result<Vec<ig_api::SavedItem>, String> {
+    let s = sess(&app).await?;
+    ig_api::saved_feed(&app, &s).await
+}
+
+/// SALVOS: colecoes do usuario ([{id,name,count}]) — o nome vira dica de tema.
+#[tauri::command]
+async fn ig_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    let s = sess(&app).await?;
+    ig_api::collections_list(&app, &s).await
+}
+
+/// SALVOS: itens de UMA colecao (o nome vira o tema no roteamento).
+#[tauri::command]
+async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>) -> Result<Vec<ig_api::SavedItem>, String> {
+    let s = sess(&app).await?;
+    ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or("")).await
+}
+
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
 #[tauri::command]
 async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
@@ -379,6 +406,9 @@ pub fn run() {
             ig_comments,
             ig_media_info,
             ig_reshares,
+            ig_saved,
+            ig_collections,
+            ig_collection,
             ig_capture_start,
             ig_capture_get,
             ig_capture_clear,

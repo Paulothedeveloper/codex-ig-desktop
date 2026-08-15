@@ -691,6 +691,141 @@ pub async fn destroy(app: &tauri::AppHandle, s: &Session, pk: &str) -> Result<()
     }
 }
 
+/// Um item dos SALVOS (pro roteador de conhecimento -> vault). So o que a sessao logada
+/// da: a lista. Frames/transcricao/roteamento sao o passo de absorcao da IA (fora do app).
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedItem {
+    pub code: String,     // shortcode -> link do reel/post
+    pub media_id: String, // pk/id (referencia)
+    pub is_video: bool,
+    pub thumb: String,      // url da capa
+    pub caption: String,    // legenda (ate 400 chars — a IA classifica o tema por ela)
+    pub taken_at: i64,
+    pub collection: String, // nome da colecao IG (se veio de uma) — dica de tema "de graca"
+}
+
+/// Extrai um SavedItem do objeto `media` do IG (funciona pra saved feed e colecao).
+fn parse_saved_media(m: &serde_json::Value, collection: &str) -> SavedItem {
+    let media_type = m["media_type"].as_i64().unwrap_or(0);
+    let thumb = m["image_versions2"]["candidates"]
+        .as_array()
+        .and_then(|c| c.last())
+        .and_then(|c| c["url"].as_str())
+        .or_else(|| {
+            m["carousel_media"][0]["image_versions2"]["candidates"]
+                .as_array()
+                .and_then(|c| c.last())
+                .and_then(|c| c["url"].as_str())
+        })
+        .unwrap_or("")
+        .to_string();
+    SavedItem {
+        code: m["code"].as_str().unwrap_or("").to_string(),
+        media_id: m["id"].as_str().map(String::from).unwrap_or_else(|| {
+            m["pk"].as_str().map(String::from).unwrap_or_else(|| {
+                m["pk"].as_i64().map(|n| n.to_string()).unwrap_or_default()
+            })
+        }),
+        is_video: media_type == 2,
+        thumb,
+        caption: m["caption"]["text"].as_str().unwrap_or("").chars().take(400).collect(),
+        taken_at: m["taken_at"].as_i64().unwrap_or(0),
+        collection: collection.to_string(),
+    }
+}
+
+/// Parseia items de um feed de salvos/colecao: cada item embrulha `media` (senao e o proprio).
+fn parse_saved_items(j: &serde_json::Value, collection: &str, out: &mut Vec<SavedItem>) {
+    if let Some(arr) = j["items"].as_array() {
+        for it in arr {
+            let m = if it.get("media").is_some() { &it["media"] } else { it };
+            let s = parse_saved_media(m, collection);
+            if !s.code.is_empty() {
+                out.push(s);
+            }
+        }
+    }
+}
+
+/// Lista TODOS os salvos (paginado + ritmado). `/api/v1/feed/saved/posts/`.
+pub async fn saved_feed(app: &tauri::AppHandle, s: &Session) -> Result<Vec<SavedItem>, String> {
+    let mut out = Vec::new();
+    let mut next = String::new();
+    for _ in 0..120 {
+        let url = format!(
+            "https://www.instagram.com/api/v1/feed/saved/posts/?count=50{}",
+            if next.is_empty() { String::new() } else { format!("&max_id={next}") }
+        );
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
+        parse_saved_items(&j, "", &mut out);
+        next = j["next_max_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+    }
+    Ok(out)
+}
+
+/// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
+pub async fn collections_list(app: &tauri::AppHandle, s: &Session) -> Result<Vec<serde_json::Value>, String> {
+    let url = "https://www.instagram.com/api/v1/collections/list/?collection_types=[\"MEDIA\"]".to_string();
+    let j = webview_fetch(app, &url, false, &s.csrf).await?;
+    let out = j["items"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "id": c["collection_id"].as_str().map(String::from)
+                            .or_else(|| c["collection_id"].as_i64().map(|n| n.to_string()))
+                            .unwrap_or_default(),
+                        "name": c["collection_name"].as_str().unwrap_or("").to_string(),
+                        "count": c["collection_media_count"].as_i64().unwrap_or(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(out)
+}
+
+/// Itens de UMA colecao (o nome vira o tema). `/api/v1/feed/collection/{id}/posts/`.
+pub async fn collection_feed(
+    app: &tauri::AppHandle,
+    s: &Session,
+    collection_id: &str,
+    collection_name: &str,
+) -> Result<Vec<SavedItem>, String> {
+    if collection_id.is_empty() || !collection_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err("collection_id invalido".into());
+    }
+    let mut out = Vec::new();
+    let mut next = String::new();
+    for _ in 0..120 {
+        let url = format!(
+            "https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/?count=50{}",
+            if next.is_empty() { String::new() } else { format!("&max_id={next}") }
+        );
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
+        parse_saved_items(&j, collection_name, &mut out);
+        next = j["next_max_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+    }
+    Ok(out)
+}
+
 /// PURA: nao-seguidores = seguindo - seguidores (por pk). Unit-testavel, sem rede.
 pub fn non_followers(following: &[IgUser], followers: &[IgUser]) -> Vec<IgUser> {
     let fset: std::collections::HashSet<&str> = followers.iter().map(|u| u.pk.as_str()).collect();

@@ -3,6 +3,7 @@ import "./index.css";
 import Relatorio from "./screens/Relatorio";
 import Instagram from "./screens/Instagram";
 import Posts from "./screens/Posts";
+import Saved from "./screens/Saved";
 import Busca from "./screens/Busca";
 import Cliques from "./screens/Cliques";
 import Config from "./screens/Config";
@@ -19,6 +20,7 @@ const ICON: Record<string, string> = {
   report: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   posts:
     '<rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/>',
+  saved: '<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/>',
   busca: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   clicks:
     '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
@@ -42,8 +44,8 @@ function Ic({ n, s = 20 }: { n: string; s?: number }) {
   );
 }
 
-type TabId = "instagram" | "report" | "posts" | "busca" | "clicks" | "config";
-const TAB_IDS: TabId[] = ["instagram", "report", "posts", "busca", "clicks", "config"];
+type TabId = "instagram" | "report" | "posts" | "saved" | "busca" | "clicks" | "config";
+const TAB_IDS: TabId[] = ["instagram", "report", "posts", "saved", "busca", "clicks", "config"];
 
 export default function App() {
   const { t, needsChoice } = useI18n();
@@ -129,6 +131,7 @@ export default function App() {
           <div className={tab === "instagram" ? "screen-in" : "hidden"}><Instagram /></div>
           <div className={tab === "report" ? "screen-in" : "hidden"}><Relatorio /></div>
           <div className={tab === "posts" ? "screen-in" : "hidden"}><Posts /></div>
+          <div className={tab === "saved" ? "screen-in" : "hidden"}><Saved /></div>
           <div className={tab === "busca" ? "screen-in" : "hidden"}><Busca /></div>
           <div className={tab === "clicks" ? "screen-in" : "hidden"}><Cliques /></div>
           <div className={tab === "config" ? "screen-in" : "hidden"}><Config /></div>
