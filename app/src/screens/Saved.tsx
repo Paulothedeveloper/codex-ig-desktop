@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+
+type Progress = { count: number; total: number; code: string; caption: string; thumb: string; is_video: boolean };
 
 // Item dos salvos (espelha ig_api::SavedItem no Rust).
 type SavedItem = {
@@ -17,11 +20,15 @@ type SavedResult = { items: SavedItem[]; next: string; throttled: boolean };
 type Collection = { id: string; name: string; count: number };
 type Mode = "all" | "collection";
 
+// status por item: "queued" = na fila (aguardando virar nota) · "done" = já virou nota no vault
+type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string };
+
 // Caixa de entrada única do 2º cérebro (fora do repo — é conhecimento, vai no Drive).
 const INBOX = "G:/Meu Drive/VAULTS/_INBOX-SALVOS";
 const QUEUE = `${INBOX}/_A-PROCESSAR.jsonl`;
 const STATE = `${INBOX}/_FILA-ESTADO.json`;
 const ROUTER = `${INBOX}/_ROTEADOR.md`;
+const FILA_MD = `${INBOX}/_FILA.md`;
 
 const enc = (s: string) => Array.from(new TextEncoder().encode(s));
 async function readText(path: string): Promise<string | null> {
@@ -38,7 +45,6 @@ async function writeText(path: string, text: string) {
 
 const igUrl = (code: string) => `https://www.instagram.com/p/${code}/`;
 
-// Regras de roteamento — gravadas 1x pra QUALQUER sessão absorver igual.
 const ROUTER_MD = `---
 tipo: roteador
 tags: [inbox, segundo-cerebro, instagram, salvos]
@@ -47,6 +53,7 @@ tags: [inbox, segundo-cerebro, instagram, salvos]
 # _ROTEADOR — como absorver a fila dos Salvos
 
 Fila: \`_A-PROCESSAR.jsonl\` (1 item/linha: code, url, is_video, caption, thumb, collection, added_at).
+Estado/status: \`_FILA-ESTADO.json\` (cursor + status por code). Painel legível: \`_FILA.md\`.
 O app (Codex IG) só ENFILEIRA. A absorção é da IA (Claude).
 
 ## Passos (por item)
@@ -58,12 +65,11 @@ O app (Codex IG) só ENFILEIRA. A absorção é da IA (Claude).
    - Outros temas → o vault do tema que melhor encaixa.
 3. **Vault novo SÓ quando nada existente serve** (domínio genuinamente novo).
    Órfão solitário → nota aqui no \`_INBOX-SALVOS\` com \`tags: [tema]\`; promove a vault próprio ao juntar ~4+ do mesmo tema.
-   NÃO criar vault pra qualquer coisa.
-4. Nota no formato Obsidian (frontmatter + [[wikilinks]] + callout): o que é, a sacada/por que presta, link, ideia.
-   Atualizar índice/busca burra do vault. Marcar processado (tirar a linha do \`.jsonl\`; \`_FILA-ESTADO.json\` mantém o \`seen\` pra não re-enfileirar).
+4. Nota no formato Obsidian (frontmatter + [[wikilinks]] + callout): o que é, a sacada, link, ideia.
+   Atualizar índice/busca burra do vault. Marcar no \`_FILA-ESTADO.json\` \`{s:"done", v:<vault>, n:<nota>}\` e tirar a linha do \`.jsonl\`.
 5. Commit do vault.
 
-Disparo: \`/vault\` ou início de sessão. (Automático total = agendar depois.)
+Disparo: \`/vault\` ou início de sessão.
 `;
 
 export default function Saved() {
@@ -75,94 +81,149 @@ export default function Saved() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
-  const [seen, setSeen] = useState<Set<string>>(new Set());
-  const [cursor, setCursor] = useState(""); // "" = do topo; senão continua o backlog
+  const [rec, setRec] = useState<Record<string, Rec>>({}); // status por code
+  const [cursor, setCursor] = useState("");
+  const [prog, setProg] = useState<Progress | null>(null);
+  const [disp, setDisp] = useState(0);
 
-  // carrega o estado da fila (seen + cursor), 1x.
+  // carrega estado (rec + cursor); migra formato antigo {seen:[]} -> rec.
   useEffect(() => {
     (async () => {
       const raw = await readText(STATE);
-      if (raw) {
-        try {
-          const s = JSON.parse(raw);
-          if (Array.isArray(s.seen)) setSeen(new Set(s.seen));
-          if (typeof s.cursor === "string") setCursor(s.cursor);
-        } catch { /* estado corrompido → recomeça vazio */ }
-      }
+      if (!raw) return;
+      try {
+        const s = JSON.parse(raw);
+        if (typeof s.cursor === "string") setCursor(s.cursor);
+        if (s.items && typeof s.items === "object") setRec(s.items);
+        else if (Array.isArray(s.seen)) {
+          const r: Record<string, Rec> = {};
+          s.seen.forEach((c: string) => (r[c] = { s: "queued", c: "" }));
+          setRec(r);
+        }
+      } catch { /* corrompido → recomeça */ }
     })();
   }, []);
+
+  useEffect(() => {
+    const un = listen<Progress>("saved_progress", (e) => setProg(e.payload));
+    return () => { un.then((f) => f()); };
+  }, []);
+
+  useEffect(() => {
+    if (!prog) { setDisp(0); return; }
+    const target = prog.count;
+    let raf = 0;
+    const step = () => setDisp((d) => {
+      if (d >= target) return target;
+      const nd = d + Math.max(1, Math.ceil((target - d) / 8));
+      if (nd < target) raf = requestAnimationFrame(step);
+      return Math.min(nd, target);
+    });
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [prog?.count]);
 
   async function loadCollections() {
     try {
       const c = await invoke<Collection[]>("ig_collections");
       setCols(c);
       if (c[0] && !colId) setColId(c[0].id);
-    } catch (e) {
-      setErr(String(e));
-    }
+    } catch (e) { setErr(String(e)); }
   }
   useEffect(() => { if (mode === "collection" && cols.length === 0) loadCollections(); }, [mode]);
 
-  // enfileira itens novos (dedup por seen); devolve quantos entraram + o novo seen.
-  async function enqueue(pulled: SavedItem[], curSeen: Set<string>): Promise<{ added: number; seen: Set<string> }> {
-    const fresh = pulled.filter((i) => !curSeen.has(i.code));
-    if (fresh.length === 0) return { added: 0, seen: curSeen };
+  const doneCount = Object.values(rec).filter((r) => r.s === "done").length;
+  const queuedCount = Object.values(rec).filter((r) => r.s === "queued").length;
+
+  // reescreve _FILA.md (painel legível, ordenado) a partir da fila crua (.jsonl) + contagem absorvida.
+  async function writeFilaMd(done: number) {
+    const raw = (await readText(QUEUE)) || "";
+    const lines = raw.split("\n").filter(Boolean);
+    const rows = lines.map((l, i) => {
+      try {
+        const o = JSON.parse(l);
+        const cap = String(o.caption || "").replace(/[|\n\r]/g, " ").slice(0, 80) || "—";
+        return `| ${i + 1} | ${o.is_video ? "Reel" : "Post"} | ${o.collection || "—"} | ${cap} | [abrir](${o.url}) |`;
+      } catch { return ""; }
+    }).filter(Boolean);
+    const md = `---
+tipo: fila-salvos
+tags: [inbox, salvos, segundo-cerebro]
+---
+
+# Fila dos Salvos — painel
+
+> [!info] ${lines.length} na fila (aguardando virar nota) · ${done} já viraram nota no vault
+> Ordenado por quando entrou. A IA processa cada um e move pro vault do tema (DaVinci, etc.).
+> Some daqui quando vira nota — aí vive no vault do tema.
+
+| # | Tipo | Tema (coleção) | Legenda | Link |
+|---|------|----------------|---------|------|
+${rows.join("\n")}
+`;
+    await writeText(FILA_MD, md);
+  }
+
+  // enfileira só os NOVOS (dedup por rec); atualiza .jsonl + _FILA.md + estado.
+  async function enqueue(pulled: SavedItem[], cur: Record<string, Rec>): Promise<{ added: number; rec: Record<string, Rec> }> {
+    const fresh = pulled.filter((i) => !cur[i.code]);
+    if (fresh.length === 0) return { added: 0, rec: cur };
     if ((await readText(ROUTER)) === null) await writeText(ROUTER, ROUTER_MD);
     const prev = (await readText(QUEUE)) || "";
     const addedAt = new Date().toISOString();
-    const lines = fresh.map((i) =>
-      JSON.stringify({
-        code: i.code, media_id: i.media_id, url: igUrl(i.code),
-        is_video: i.is_video, caption: i.caption, thumb: i.thumb,
-        collection: i.collection, added_at: addedAt,
-      })
-    );
-    const next = (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + lines.join("\n") + "\n";
-    await writeText(QUEUE, next);
-    const nextSeen = new Set(curSeen);
-    fresh.forEach((i) => nextSeen.add(i.code));
-    return { added: fresh.length, seen: nextSeen };
+    const lines = fresh.map((i) => JSON.stringify({
+      code: i.code, media_id: i.media_id, url: igUrl(i.code),
+      is_video: i.is_video, caption: i.caption, thumb: i.thumb,
+      collection: i.collection, added_at: addedAt,
+    }));
+    await writeText(QUEUE, (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + lines.join("\n") + "\n");
+    const next = { ...cur };
+    fresh.forEach((i) => (next[i.code] = { s: "queued", c: i.collection }));
+    await writeFilaMd(Object.values(next).filter((r) => r.s === "done").length);
+    return { added: fresh.length, rec: next };
   }
 
-  const saveState = async (s: Set<string>, cur: string) =>
-    writeText(STATE, JSON.stringify({ seen: [...s], cursor: cur }, null, 0));
+  const saveState = async (r: Record<string, Rec>, cur: string) =>
+    writeText(STATE, JSON.stringify({ cursor: cur, items: r }, null, 0));
 
   async function pull(restart = false) {
-    setLoading(true);
-    setErr("");
-    setMsg("");
+    setLoading(true); setErr(""); setMsg(""); setProg(null);
     try {
       if (mode === "collection") {
         if (!colId) { setErr(t("saved.pickCol")); return; }
-        const name = cols.find((c) => c.id === colId)?.name || "";
-        const r = await invoke<SavedItem[]>("ig_collection", { id: colId, name });
+        const col = cols.find((c) => c.id === colId);
+        const r = await invoke<SavedItem[]>("ig_collection", { id: colId, name: col?.name || "", total: col?.count ?? 0 });
         setItems(r);
-        const { added, seen: ns } = await enqueue(r, seen);
-        setSeen(ns);
-        await saveState(ns, cursor);
+        const { added, rec: nr } = await enqueue(r, rec);
+        setRec(nr); await saveState(nr, cursor);
         setMsg(added ? t("saved.queued", { n: nf(added) }) : t("saved.nothingNew"));
         return;
       }
-      // modo "todos": chunk + resume (drena backlog sem perder parcial no throttle)
       const resume = restart ? "" : cursor;
       const res = await invoke<SavedResult>("ig_saved", { resume });
-      // acumula no display quando é continuação; recomeça quando restart/topo
       setItems((prev) => (resume ? [...prev, ...res.items] : res.items));
-      const { added, seen: ns } = await enqueue(res.items, seen);
-      setSeen(ns);
-      setCursor(res.next);
-      await saveState(ns, res.next);
+      const { added, rec: nr } = await enqueue(res.items, rec);
+      setRec(nr); setCursor(res.next); await saveState(nr, res.next);
       if (res.throttled) setMsg(t("saved.throttled", { n: nf(added) }));
-      else if (res.next) setMsg(t("saved.more", { n: nf(added) }));
+      else if (res.next) setMsg(added ? t("saved.more", { n: nf(added) }) : t("saved.moreNoNew"));
       else setMsg(added ? t("saved.doneAll", { n: nf(added) }) : t("saved.nothingNew"));
     } catch (e) {
       setErr(String(e));
     } finally {
-      setLoading(false);
+      setLoading(false); setProg(null);
     }
   }
 
   const continuing = mode === "all" && !!cursor;
+  const pct = prog && prog.total > 0 ? Math.min(100, Math.round((prog.count / prog.total) * 100)) : 0;
+
+  // badge de status de um item na lista
+  const badge = (code: string) => {
+    const r = rec[code];
+    if (!r) return { label: t("saved.bNew"), cls: "border-[var(--color-teal)] text-[var(--color-teal2)]" };
+    if (r.s === "done") return { label: t("saved.bDone"), cls: "border-[#3ad07a]/50 text-[#3ad07a]" };
+    return { label: t("saved.bQueued"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" };
+  };
 
   return (
     <div className="space-y-5">
@@ -172,48 +233,39 @@ export default function Saved() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.mode")}</span>
-            <Select
-              ariaLabel={t("saved.mode")}
-              value={mode}
-              onChange={(v) => setMode(v as Mode)}
-              options={[
-                { value: "all", label: t("saved.mAll") },
-                { value: "collection", label: t("saved.mCollection") },
-              ]}
-            />
+            <Select ariaLabel={t("saved.mode")} value={mode} onChange={(v) => setMode(v as Mode)}
+              options={[{ value: "all", label: t("saved.mAll") }, { value: "collection", label: t("saved.mCollection") }]} />
           </div>
 
           {mode === "collection" && (
             <div className="min-w-[200px]">
               <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.collection")}</span>
-              <Select
-                ariaLabel={t("saved.collection")}
-                value={colId}
-                onChange={setColId}
-                options={cols.length
-                  ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` }))
-                  : [{ value: "", label: t("saved.noCols") }]}
-              />
+              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId}
+                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })) : [{ value: "", label: t("saved.noCols") }]} />
             </div>
           )}
 
-          <button
-            onClick={() => pull(false)}
-            disabled={loading}
-            className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50"
-          >
+          <button onClick={() => pull(false)} disabled={loading}
+            className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
             {loading ? t("saved.pulling") : continuing ? t("saved.continue") : t("saved.pull")}
           </button>
 
           {continuing && !loading && (
-            <button
-              onClick={() => pull(true)}
-              className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2.5 text-[12.5px] font-bold text-[var(--color-slate)]"
-            >
+            <button onClick={() => pull(true)}
+              className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2.5 text-[12.5px] font-bold text-[var(--color-slate)]">
               {t("saved.restart")}
             </button>
           )}
         </div>
+
+        {/* placar do 2º cérebro: na fila vs já no vault */}
+        {(queuedCount > 0 || doneCount > 0) && (
+          <div className="mt-4 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-[12.5px]">
+            <span className="text-[var(--color-slate)]">{t("saved.statQueued")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(queuedCount)}</b></span>
+            <span className="text-[var(--color-slate)]">{t("saved.statDone")}: <b className="text-[#3ad07a] tabular-nums">{nf(doneCount)}</b></span>
+            <span className="text-[var(--color-slate)]">{t("saved.filaHint")}</span>
+          </div>
+        )}
 
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.note")}</p>
       </div>
@@ -221,26 +273,51 @@ export default function Saved() {
       {err && <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>}
       {msg && <div className="pop rounded-xl border border-[var(--color-teal)]/40 bg-[#08201c] px-4 py-3 text-[13px] text-[var(--color-teal2)]">{msg}</div>}
 
-      {loading && <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-20" />)}</div>}
+      {loading && (
+        <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+          <div className="flex items-center gap-4">
+            {prog?.thumb ? <img src={prog.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+              : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.transferring")}</div>
+              <div className="text-[26px] font-bold leading-tight tabular-nums text-[var(--color-paper)]">
+                {nf(disp)}{prog && prog.total > 0 ? <span className="text-[var(--color-slate)]"> / {nf(prog.total)}</span> : null}
+                <span className="ml-2 align-middle text-[12px] font-normal text-[var(--color-slate)]">{t("saved.pulledUnit")}</span>
+              </div>
+              <div className="mt-0.5 truncate text-[12px] text-[var(--color-slate)]">{prog?.caption || t("saved.pulling")}</div>
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#0e1522]">
+            {prog && prog.total > 0
+              ? <div className="h-full rounded-full bg-[linear-gradient(90deg,#00e5c9,#7ef7e6)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
+              : <div className="skel h-full w-full" />}
+          </div>
+          <div className="mt-2 text-[11px] text-[var(--color-slate)]">{t("saved.transferNote")}</div>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="space-y-3">
           <span className="text-[13px] text-[var(--color-slate)]">{t("saved.found", { n: nf(items.length) })}</span>
           <div className="stagger space-y-2">
-            {items.map((it, i) => (
-              <div key={it.code + i} className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)]">
-                {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <a href={igUrl(it.code)} target="_blank" rel="noreferrer" className="truncate text-[13.5px] font-bold text-[var(--color-teal2)] hover:underline">
-                      {it.is_video ? t("saved.reel") : t("saved.post")} · {it.code}
-                    </a>
-                    {it.collection ? <span className="shrink-0 rounded-full border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-slate)]">{it.collection}</span> : null}
+            {items.map((it, i) => {
+              const b = badge(it.code);
+              return (
+                <div key={it.code + i} className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)]">
+                  {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <a href={igUrl(it.code)} target="_blank" rel="noreferrer" className="truncate text-[13.5px] font-bold text-[var(--color-teal2)] hover:underline">
+                        {it.is_video ? t("saved.reel") : t("saved.post")} · {it.code}
+                      </a>
+                      {it.collection ? <span className="shrink-0 rounded-full border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-slate)]">{it.collection}</span> : null}
+                      <span className={"ml-auto shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] font-bold " + b.cls}>{b.label}</span>
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{it.caption || t("saved.noCaption")}</p>
                   </div>
-                  <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{it.caption || t("saved.noCaption")}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

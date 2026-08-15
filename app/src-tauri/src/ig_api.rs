@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 
 pub const LOGIN: &str = "require_login"; // sentinela: sem sessao -> front mostra "faca login"
 pub const RATE: &str = "ig_rate_limited"; // IG limitou/bloqueou temporario -> front "espere uns minutos"
@@ -762,6 +762,19 @@ fn parse_saved_items(j: &serde_json::Value, collection: &str, out: &mut Vec<Save
     }
 }
 
+/// Emite progresso do "puxar salvos" pro front (tela de transferencia: N de TOTAL + item atual).
+fn emit_saved_progress(app: &tauri::AppHandle, count: usize, total: i64, last: Option<&SavedItem>) {
+    let payload = serde_json::json!({
+        "count": count,
+        "total": total, // 0 = desconhecido (todos os salvos); >0 = tamanho da colecao
+        "code": last.map(|i| i.code.as_str()).unwrap_or(""),
+        "caption": last.map(|i| i.caption.as_str()).unwrap_or(""),
+        "thumb": last.map(|i| i.thumb.as_str()).unwrap_or(""),
+        "is_video": last.map(|i| i.is_video).unwrap_or(false),
+    });
+    let _ = app.emit("saved_progress", payload);
+}
+
 /// DEBUG: grava linha no log de salvos (%TEMP%\codexig-saved.log) — eu leio o arquivo.
 fn dbg_saved(msg: &str) {
     use std::io::Write;
@@ -782,7 +795,7 @@ pub struct SavedResult {
 /// Pagina UM endpoint de salvos a partir de `start` (cursor). Devolve ate ~12 paginas.
 /// NAO perde o parcial: se o IG limitar DEPOIS de ja termos itens, devolve o que tem + cursor.
 /// So propaga erro se falhar LOGO na 1a pagina sem nada (login real / endpoint errado).
-async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: &str) -> Result<SavedResult, String> {
+async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: &str, total: i64) -> Result<SavedResult, String> {
     let mut out = Vec::new();
     let mut next = start.to_string();
     let mut throttled = false;
@@ -813,6 +826,7 @@ async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: 
             .unwrap_or_default();
         let more = j["more_available"].as_bool().unwrap_or(false);
         dbg_saved(&format!("  <- +{} (tot {}) more={} next='{}'", out.len() - before, out.len(), more, next));
+        emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
         if next.is_empty() || !more {
             next = String::new();
             break;
@@ -829,7 +843,7 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
     dbg_saved(&format!("=== saved_feed inicio (resume='{}') ===", resume));
     // continuando um chunk anterior: endpoint ja conhecido, so pagina de onde parou.
     if !resume.is_empty() {
-        return saved_paginate(app, s, SAVED, resume).await;
+        return saved_paginate(app, s, SAVED, resume, 0).await;
     }
     // 1a vez: tenta candidatos (o /posts/ e o que responde; os outros sao fallback).
     let bases = [
@@ -840,7 +854,7 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
     let mut last_err = String::from("nenhum endpoint de salvos respondeu");
     for base in bases {
         dbg_saved(&format!("[candidato] {base}"));
-        match saved_paginate(app, s, base, "").await {
+        match saved_paginate(app, s, base, "", 0).await {
             Ok(r) => { dbg_saved(&format!("[OK] {base} -> {} itens next='{}' throttled={}", r.items.len(), r.next, r.throttled)); return Ok(r); }
             Err(e) => { dbg_saved(&format!("[FAIL] {base} -> {e}")); last_err = e; }
         }
@@ -878,6 +892,7 @@ pub async fn collection_feed(
     s: &Session,
     collection_id: &str,
     collection_name: &str,
+    total: i64,
 ) -> Result<Vec<SavedItem>, String> {
     if collection_id.is_empty() || !collection_id.chars().all(|c| c.is_ascii_digit()) {
         return Err("collection_id invalido".into());
@@ -891,6 +906,7 @@ pub async fn collection_feed(
         );
         let j = webview_fetch(app, &url, false, &s.csrf).await?;
         parse_saved_items(&j, collection_name, &mut out);
+        emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
         next = j["next_max_id"]
             .as_str()
             .map(String::from)
@@ -899,7 +915,7 @@ pub async fn collection_feed(
         if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+        tokio::time::sleep(Duration::from_millis(jitter_ms(900))).await;
     }
     Ok(out)
 }

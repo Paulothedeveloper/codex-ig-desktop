@@ -311,9 +311,9 @@ async fn ig_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>,
 
 /// SALVOS: itens de UMA colecao (o nome vira o tema no roteamento).
 #[tauri::command]
-async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>) -> Result<Vec<ig_api::SavedItem>, String> {
+async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>, total: Option<i64>) -> Result<Vec<ig_api::SavedItem>, String> {
     let s = sess(&app).await?;
-    ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or("")).await
+    ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or(""), total.unwrap_or(0)).await
 }
 
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
