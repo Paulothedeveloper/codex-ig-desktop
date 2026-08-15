@@ -245,7 +245,9 @@ catch(e){{window.__TAURI__.event.emit('ig_result',{{id:{id},ok:false,status:0,ur
                 return Err(RATE.into());
             }
             if !ok {
-                return Err(format!("HTTP {status}"));
+                // inclui um trecho do corpo real (o IG diz a verdade no JSON — lição de julho)
+                let peek: String = body.chars().take(180).collect();
+                return Err(format!("HTTP {status}: {peek}"));
             }
             // corpo nao-JSON num endpoint de API = parede do IG (HTML) = throttle
             return serde_json::from_str(body).map_err(|_| RATE.to_string());
@@ -747,13 +749,14 @@ fn parse_saved_items(j: &serde_json::Value, collection: &str, out: &mut Vec<Save
     }
 }
 
-/// Lista TODOS os salvos (paginado + ritmado). `/api/v1/feed/saved/posts/`.
-pub async fn saved_feed(app: &tauri::AppHandle, s: &Session) -> Result<Vec<SavedItem>, String> {
+/// Pagina UM endpoint de salvos (base sem query). Devolve os itens.
+async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str) -> Result<Vec<SavedItem>, String> {
     let mut out = Vec::new();
     let mut next = String::new();
     for _ in 0..120 {
+        let sep = if base.contains('?') { "&" } else { "?" };
         let url = format!(
-            "https://www.instagram.com/api/v1/feed/saved/posts/?count=50{}",
+            "{base}{sep}count=50{}",
             if next.is_empty() { String::new() } else { format!("&max_id={next}") }
         );
         let j = webview_fetch(app, &url, false, &s.csrf).await?;
@@ -769,6 +772,25 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session) -> Result<Vec<Saved
         tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
     }
     Ok(out)
+}
+
+/// Lista TODOS os salvos. O endpoint web varia — tenta candidatos em ordem; o 1º que NAO
+/// der erro (200) vence (mesmo vazio = conta sem salvos). So troca de candidato em erro.
+pub async fn saved_feed(app: &tauri::AppHandle, s: &Session) -> Result<Vec<SavedItem>, String> {
+    let bases = [
+        "https://www.instagram.com/api/v1/feed/saved/posts/",
+        "https://www.instagram.com/api/v1/feed/saved/",
+        "https://www.instagram.com/api/v1/feed/collection/ALL_MEDIA_AUTO_COLLECTION/posts/",
+        "https://www.instagram.com/api/v1/feed/collection/ALL_MEDIA_AUTO_COLLECTION/",
+    ];
+    let mut last_err = String::from("nenhum endpoint de salvos respondeu");
+    for base in bases {
+        match saved_paginate(app, s, base).await {
+            Ok(v) => return Ok(v),
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
 }
 
 /// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
