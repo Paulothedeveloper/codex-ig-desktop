@@ -295,11 +295,11 @@ async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Va
     ig_api::raw_get(&app, &url).await
 }
 
-/// SALVOS: lista todos os itens salvos (pro roteador de conhecimento -> vault).
+/// SALVOS: um chunk dos itens salvos (+ cursor pra continuar). `resume` = cursor do chunk anterior.
 #[tauri::command]
-async fn ig_saved(app: tauri::AppHandle) -> Result<Vec<ig_api::SavedItem>, String> {
+async fn ig_saved(app: tauri::AppHandle, resume: Option<String>) -> Result<ig_api::SavedResult, String> {
     let s = sess(&app).await?;
-    ig_api::saved_feed(&app, &s).await
+    ig_api::saved_feed(&app, &s, resume.as_deref().unwrap_or("")).await
 }
 
 /// SALVOS: colecoes do usuario ([{id,name,count}]) — o nome vira dica de tema.

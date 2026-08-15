@@ -13,6 +13,7 @@ type SavedItem = {
   taken_at: number;
   collection: string;
 };
+type SavedResult = { items: SavedItem[]; next: string; throttled: boolean };
 type Collection = { id: string; name: string; count: number };
 type Mode = "all" | "collection";
 
@@ -70,14 +71,14 @@ export default function Saved() {
   const [mode, setMode] = useState<Mode>("all");
   const [cols, setCols] = useState<Collection[]>([]);
   const [colId, setColId] = useState("");
-  const [items, setItems] = useState<SavedItem[] | null>(null);
+  const [items, setItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [seen, setSeen] = useState<Set<string>>(new Set());
+  const [cursor, setCursor] = useState(""); // "" = do topo; senão continua o backlog
 
-  // carrega o estado da fila (o que já foi enfileirado) + coleções, 1x.
+  // carrega o estado da fila (seen + cursor), 1x.
   useEffect(() => {
     (async () => {
       const raw = await readText(STATE);
@@ -85,6 +86,7 @@ export default function Saved() {
         try {
           const s = JSON.parse(raw);
           if (Array.isArray(s.seen)) setSeen(new Set(s.seen));
+          if (typeof s.cursor === "string") setCursor(s.cursor);
         } catch { /* estado corrompido → recomeça vazio */ }
       }
     })();
@@ -101,21 +103,58 @@ export default function Saved() {
   }
   useEffect(() => { if (mode === "collection" && cols.length === 0) loadCollections(); }, [mode]);
 
-  async function pull() {
+  // enfileira itens novos (dedup por seen); devolve quantos entraram + o novo seen.
+  async function enqueue(pulled: SavedItem[], curSeen: Set<string>): Promise<{ added: number; seen: Set<string> }> {
+    const fresh = pulled.filter((i) => !curSeen.has(i.code));
+    if (fresh.length === 0) return { added: 0, seen: curSeen };
+    if ((await readText(ROUTER)) === null) await writeText(ROUTER, ROUTER_MD);
+    const prev = (await readText(QUEUE)) || "";
+    const addedAt = new Date().toISOString();
+    const lines = fresh.map((i) =>
+      JSON.stringify({
+        code: i.code, media_id: i.media_id, url: igUrl(i.code),
+        is_video: i.is_video, caption: i.caption, thumb: i.thumb,
+        collection: i.collection, added_at: addedAt,
+      })
+    );
+    const next = (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + lines.join("\n") + "\n";
+    await writeText(QUEUE, next);
+    const nextSeen = new Set(curSeen);
+    fresh.forEach((i) => nextSeen.add(i.code));
+    return { added: fresh.length, seen: nextSeen };
+  }
+
+  const saveState = async (s: Set<string>, cur: string) =>
+    writeText(STATE, JSON.stringify({ seen: [...s], cursor: cur }, null, 0));
+
+  async function pull(restart = false) {
     setLoading(true);
     setErr("");
     setMsg("");
-    setItems(null);
     try {
-      let r: SavedItem[];
       if (mode === "collection") {
-        if (!colId) { setErr(t("saved.pickCol")); setLoading(false); return; }
+        if (!colId) { setErr(t("saved.pickCol")); return; }
         const name = cols.find((c) => c.id === colId)?.name || "";
-        r = await invoke<SavedItem[]>("ig_collection", { id: colId, name });
-      } else {
-        r = await invoke<SavedItem[]>("ig_saved");
+        const r = await invoke<SavedItem[]>("ig_collection", { id: colId, name });
+        setItems(r);
+        const { added, seen: ns } = await enqueue(r, seen);
+        setSeen(ns);
+        await saveState(ns, cursor);
+        setMsg(added ? t("saved.queued", { n: nf(added) }) : t("saved.nothingNew"));
+        return;
       }
-      setItems(r);
+      // modo "todos": chunk + resume (drena backlog sem perder parcial no throttle)
+      const resume = restart ? "" : cursor;
+      const res = await invoke<SavedResult>("ig_saved", { resume });
+      // acumula no display quando é continuação; recomeça quando restart/topo
+      setItems((prev) => (resume ? [...prev, ...res.items] : res.items));
+      const { added, seen: ns } = await enqueue(res.items, seen);
+      setSeen(ns);
+      setCursor(res.next);
+      await saveState(ns, res.next);
+      if (res.throttled) setMsg(t("saved.throttled", { n: nf(added) }));
+      else if (res.next) setMsg(t("saved.more", { n: nf(added) }));
+      else setMsg(added ? t("saved.doneAll", { n: nf(added) }) : t("saved.nothingNew"));
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -123,47 +162,7 @@ export default function Saved() {
     }
   }
 
-  const freshCount = (items || []).filter((i) => !seen.has(i.code)).length;
-
-  async function enqueue() {
-    if (!items?.length) return;
-    const fresh = items.filter((i) => !seen.has(i.code));
-    if (fresh.length === 0) { setMsg(t("saved.nothingNew")); return; }
-    setBusy(t("saved.sending"));
-    setErr("");
-    setMsg("");
-    try {
-      // roteador (1x)
-      if ((await readText(ROUTER)) === null) await writeText(ROUTER, ROUTER_MD);
-      // append na fila (lê o que tem, junta, regrava — escala pequena)
-      const prev = (await readText(QUEUE)) || "";
-      const addedAt = new Date().toISOString();
-      const lines = fresh.map((i) =>
-        JSON.stringify({
-          code: i.code,
-          media_id: i.media_id,
-          url: igUrl(i.code),
-          is_video: i.is_video,
-          caption: i.caption,
-          thumb: i.thumb,
-          collection: i.collection,
-          added_at: addedAt,
-        })
-      );
-      const next = (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + lines.join("\n") + "\n";
-      await writeText(QUEUE, next);
-      // atualiza estado (seen)
-      const nextSeen = new Set(seen);
-      fresh.forEach((i) => nextSeen.add(i.code));
-      setSeen(nextSeen);
-      await writeText(STATE, JSON.stringify({ seen: [...nextSeen] }, null, 0));
-      setMsg(t("saved.queued", { n: nf(fresh.length) }));
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy("");
-    }
-  }
+  const continuing = mode === "all" && !!cursor;
 
   return (
     <div className="space-y-5">
@@ -199,12 +198,21 @@ export default function Saved() {
           )}
 
           <button
-            onClick={pull}
+            onClick={() => pull(false)}
             disabled={loading}
             className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50"
           >
-            {loading ? t("saved.pulling") : t("saved.pull")}
+            {loading ? t("saved.pulling") : continuing ? t("saved.continue") : t("saved.pull")}
           </button>
+
+          {continuing && !loading && (
+            <button
+              onClick={() => pull(true)}
+              className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2.5 text-[12.5px] font-bold text-[var(--color-slate)]"
+            >
+              {t("saved.restart")}
+            </button>
+          )}
         </div>
 
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.note")}</p>
@@ -215,47 +223,25 @@ export default function Saved() {
 
       {loading && <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-20" />)}</div>}
 
-      {!loading && items && (
+      {items.length > 0 && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[13px] text-[var(--color-slate)]">
-              {t("saved.found", { n: nf(items.length) })}
-              {" · "}
-              <span className="font-bold text-[var(--color-teal2)]">{t("saved.freshN", { n: nf(freshCount) })}</span>
-            </span>
-            <button
-              onClick={enqueue}
-              disabled={!!busy || freshCount === 0}
-              className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40"
-            >
-              {busy || t("saved.enqueue", { n: nf(freshCount) })}
-            </button>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="rounded-xl border border-[var(--color-line)] bg-[#090d15] p-6 text-center text-[13px] text-[var(--color-slate)]">{t("saved.empty")}</div>
-          ) : (
-            <div className="stagger space-y-2">
-              {items.map((it) => {
-                const fresh = !seen.has(it.code);
-                return (
-                  <div key={it.code} className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)]">
-                    {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <a href={igUrl(it.code)} target="_blank" rel="noreferrer" className="truncate text-[13.5px] font-bold text-[var(--color-teal2)] hover:underline">
-                          {it.is_video ? t("saved.reel") : t("saved.post")} · {it.code}
-                        </a>
-                        {it.collection ? <span className="shrink-0 rounded-full border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-slate)]">{it.collection}</span> : null}
-                        {!fresh ? <span className="shrink-0 text-[10.5px] text-[var(--color-slate)]">{t("saved.done")}</span> : null}
-                      </div>
-                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{it.caption || t("saved.noCaption")}</p>
-                    </div>
+          <span className="text-[13px] text-[var(--color-slate)]">{t("saved.found", { n: nf(items.length) })}</span>
+          <div className="stagger space-y-2">
+            {items.map((it, i) => (
+              <div key={it.code + i} className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)]">
+                {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <a href={igUrl(it.code)} target="_blank" rel="noreferrer" className="truncate text-[13.5px] font-bold text-[var(--color-teal2)] hover:underline">
+                      {it.is_video ? t("saved.reel") : t("saved.post")} · {it.code}
+                    </a>
+                    {it.collection ? <span className="shrink-0 rounded-full border border-[var(--color-steel)] px-2 py-0.5 text-[10.5px] text-[var(--color-slate)]">{it.collection}</span> : null}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-[var(--color-ink)]">{it.caption || t("saved.noCaption")}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -762,47 +762,90 @@ fn parse_saved_items(j: &serde_json::Value, collection: &str, out: &mut Vec<Save
     }
 }
 
-/// Pagina UM endpoint de salvos (base sem query). Devolve os itens.
-async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str) -> Result<Vec<SavedItem>, String> {
+/// DEBUG: grava linha no log de salvos (%TEMP%\codexig-saved.log) — eu leio o arquivo.
+fn dbg_saved(msg: &str) {
+    use std::io::Write;
+    let p = std::env::temp_dir().join("codexig-saved.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+        let _ = writeln!(f, "{msg}");
+    }
+}
+
+/// Resultado de um chunk de salvos: itens + cursor pra continuar + se o IG limitou.
+#[derive(serde::Serialize)]
+pub struct SavedResult {
+    pub items: Vec<SavedItem>,
+    pub next: String,     // "" = acabou; senao = passa em resume pra continuar
+    pub throttled: bool,  // IG limitou no meio (parcial devolvido; espere e continue)
+}
+
+/// Pagina UM endpoint de salvos a partir de `start` (cursor). Devolve ate ~12 paginas.
+/// NAO perde o parcial: se o IG limitar DEPOIS de ja termos itens, devolve o que tem + cursor.
+/// So propaga erro se falhar LOGO na 1a pagina sem nada (login real / endpoint errado).
+async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: &str) -> Result<SavedResult, String> {
     let mut out = Vec::new();
-    let mut next = String::new();
-    for _ in 0..120 {
+    let mut next = start.to_string();
+    let mut throttled = false;
+    for page in 0..12 {
         let sep = if base.contains('?') { "&" } else { "?" };
         let url = format!(
             "{base}{sep}count=50{}",
             if next.is_empty() { String::new() } else { format!("&max_id={next}") }
         );
-        let j = webview_fetch(app, &url, false, &s.csrf).await?;
+        dbg_saved(&format!("  -> GET pg{page} {url}"));
+        let j = match webview_fetch(app, &url, false, &s.csrf).await {
+            Ok(v) => v,
+            Err(e) => {
+                dbg_saved(&format!("  <- ERR {e}"));
+                if out.is_empty() && page == 0 {
+                    return Err(e); // nada ainda: login real ou endpoint errado -> deixa o chamador tratar
+                }
+                throttled = true; // ja temos itens: IG limitou no meio -> parcial + cursor pra continuar
+                break;
+            }
+        };
+        let before = out.len();
         parse_saved_items(&j, "", &mut out);
         next = j["next_max_id"]
             .as_str()
             .map(String::from)
             .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
             .unwrap_or_default();
-        if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
+        let more = j["more_available"].as_bool().unwrap_or(false);
+        dbg_saved(&format!("  <- +{} (tot {}) more={} next='{}'", out.len() - before, out.len(), more, next));
+        if next.is_empty() || !more {
+            next = String::new();
             break;
         }
-        tokio::time::sleep(Duration::from_millis(jitter_ms(600))).await;
+        tokio::time::sleep(Duration::from_millis(jitter_ms(1500))).await; // ritmo lento anti-throttle
     }
-    Ok(out)
+    Ok(SavedResult { items: out, next, throttled })
 }
 
 /// Lista TODOS os salvos. O endpoint web varia — tenta candidatos em ordem; o 1º que NAO
 /// der erro (200) vence (mesmo vazio = conta sem salvos). So troca de candidato em erro.
-pub async fn saved_feed(app: &tauri::AppHandle, s: &Session) -> Result<Vec<SavedItem>, String> {
+pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Result<SavedResult, String> {
+    const SAVED: &str = "https://www.instagram.com/api/v1/feed/saved/posts/";
+    dbg_saved(&format!("=== saved_feed inicio (resume='{}') ===", resume));
+    // continuando um chunk anterior: endpoint ja conhecido, so pagina de onde parou.
+    if !resume.is_empty() {
+        return saved_paginate(app, s, SAVED, resume).await;
+    }
+    // 1a vez: tenta candidatos (o /posts/ e o que responde; os outros sao fallback).
     let bases = [
-        "https://www.instagram.com/api/v1/feed/saved/posts/",
+        SAVED,
         "https://www.instagram.com/api/v1/feed/saved/",
         "https://www.instagram.com/api/v1/feed/collection/ALL_MEDIA_AUTO_COLLECTION/posts/",
-        "https://www.instagram.com/api/v1/feed/collection/ALL_MEDIA_AUTO_COLLECTION/",
     ];
     let mut last_err = String::from("nenhum endpoint de salvos respondeu");
     for base in bases {
-        match saved_paginate(app, s, base).await {
-            Ok(v) => return Ok(v),
-            Err(e) => last_err = e,
+        dbg_saved(&format!("[candidato] {base}"));
+        match saved_paginate(app, s, base, "").await {
+            Ok(r) => { dbg_saved(&format!("[OK] {base} -> {} itens next='{}' throttled={}", r.items.len(), r.next, r.throttled)); return Ok(r); }
+            Err(e) => { dbg_saved(&format!("[FAIL] {base} -> {e}")); last_err = e; }
         }
     }
+    dbg_saved(&format!("=== saved_feed fim SEM sucesso: {last_err} ==="));
     Err(last_err)
 }
 
