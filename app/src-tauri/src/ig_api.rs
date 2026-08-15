@@ -222,6 +222,19 @@ catch(e){{window.__TAURI__.event.emit('ig_result',{{id:{id},ok:false,status:0,ur
             if body.starts_with("ERR:") {
                 return Err(RATE.into());
             }
+            // IG serviu a PAGINA (HTML) em vez de JSON num endpoint de API:
+            // shell "not-logged-in" = sessao caida (ds_user_id sobrevive ao logout, engana o pre-check);
+            // qualquer HTML aqui = deslogado/checkpoint. Trata como LOGIN (o front mostra "faca login").
+            {
+                let low = body.trim_start().to_ascii_lowercase();
+                if low.contains("not-logged-in")
+                    || low.contains("not_logged_in")
+                    || low.starts_with("<!doctype html")
+                    || low.starts_with("<html")
+                {
+                    return Err(LOGIN.into());
+                }
+            }
             // Bloqueio temporario do IG: responde 401 JSON "Aguarde alguns minutos..." OU redireciona
             // a chamada pro homepage (HTML). Como o ds ja foi confirmado (logado), isto NUNCA e logout
             // — e throttle/checkpoint. Peek na mensagem do JSON confirma o soft-block.
