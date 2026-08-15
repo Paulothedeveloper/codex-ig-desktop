@@ -341,6 +341,11 @@ const PT: Dict = {
   "saved.post": "Post",
   "saved.done": "já na fila",
   "saved.noCaption": "(sem legenda)",
+  "saved.continue": "Continuar (tem mais)",
+  "saved.restart": "Recomeçar do topo",
+  "saved.throttled": "IG limitou. Peguei {n} novo(s) e enfileirei. Espere ~1-2min e clique Continuar.",
+  "saved.more": "{n} novo(s) na fila. Tem mais — clique Continuar.",
+  "saved.doneAll": "Tudo puxado. {n} novo(s) na fila. Rode /vault pra eu absorver.",
   "coach.config.t": "4 · Conta e idioma",
   "coach.config.b": "Veja a sessão, exporte a whitelist e troque o idioma quando quiser.",
 };
@@ -662,6 +667,11 @@ const EN: Dict = {
   "saved.post": "Post",
   "saved.done": "queued",
   "saved.noCaption": "(no caption)",
+  "saved.continue": "Continue (more left)",
+  "saved.restart": "Restart from top",
+  "saved.throttled": "IG throttled. Queued {n} new. Wait ~1-2 min and click Continue.",
+  "saved.more": "{n} new queued. More left — click Continue.",
+  "saved.doneAll": "All pulled. {n} new queued. Run /vault so I absorb them.",
   "coach.config.t": "4 · Account and language",
   "coach.config.b": "See the session, export the whitelist and switch language whenever you want.",
 };
@@ -983,6 +993,11 @@ const ES: Dict = {
   "saved.post": "Post",
   "saved.done": "en cola",
   "saved.noCaption": "(sin descripción)",
+  "saved.continue": "Continuar (hay más)",
+  "saved.restart": "Reiniciar desde arriba",
+  "saved.throttled": "IG limitó. Encolé {n} nuevo(s). Espera ~1-2 min y pulsa Continuar.",
+  "saved.more": "{n} nuevo(s) en cola. Hay más — pulsa Continuar.",
+  "saved.doneAll": "Todo traído. {n} nuevo(s) en cola. Ejecuta /vault para absorber.",
   "coach.config.t": "4 · Cuenta e idioma",
   "coach.config.b": "Ve la sesión, exporta la lista blanca y cambia el idioma cuando quieras.",
 };
@@ -1304,6 +1319,11 @@ const FR: Dict = {
   "saved.post": "Post",
   "saved.done": "en file",
   "saved.noCaption": "(sans légende)",
+  "saved.continue": "Continuer (encore)",
+  "saved.restart": "Recommencer du haut",
+  "saved.throttled": "IG a limité. {n} nouveau(x) en file. Attends ~1-2 min et clique Continuer.",
+  "saved.more": "{n} nouveau(x) en file. Encore — clique Continuer.",
+  "saved.doneAll": "Tout récupéré. {n} en file. Lance /vault pour absorber.",
   "coach.config.t": "4 · Compte et langue",
   "coach.config.b": "Vois la session, exporte la liste blanche et change de langue quand tu veux.",
 };
@@ -1627,6 +1647,11 @@ const DE: Dict = {
   "saved.post": "Post",
   "saved.done": "in Warteschlange",
   "saved.noCaption": "(keine Beschriftung)",
+  "saved.continue": "Weiter (mehr übrig)",
+  "saved.restart": "Von oben neu",
+  "saved.throttled": "IG hat gedrosselt. {n} neu in Warteschlange. Warte ~1-2 Min und klick Weiter.",
+  "saved.more": "{n} neu in Warteschlange. Mehr übrig — klick Weiter.",
+  "saved.doneAll": "Alles geholt. {n} neu in Warteschlange. Führe /vault aus zum Aufnehmen.",
 };
 
 const DICT: Record<Lang, Dict> = { pt: PT, en: EN, es: ES, fr: FR, de: DE };
