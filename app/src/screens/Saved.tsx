@@ -85,6 +85,23 @@ export default function Saved() {
   const [cursor, setCursor] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
   const [disp, setDisp] = useState(0);
+  const [absBusy, setAbsBusy] = useState(false);
+  const [abs, setAbs] = useState<{ ok: number; skip: number; fail: number; dup: number; finished: boolean; tail: string[] } | null>(null);
+
+  // dispara o motor de absorção (node) e acompanha o progresso pelo log.
+  async function absorb() {
+    setAbsBusy(true); setAbs(null); setErr("");
+    try {
+      await invoke("absorb_run", { limit: 100 });
+    } catch (e) { setErr(String(e)); setAbsBusy(false); return; }
+    const poll = setInterval(async () => {
+      try {
+        const s = await invoke<typeof abs>("absorb_status");
+        setAbs(s);
+        if (s?.finished) { clearInterval(poll); setAbsBusy(false); }
+      } catch { /* segue */ }
+    }, 4000);
+  }
 
   // carrega estado (rec + cursor); migra formato antigo {seen:[]} -> rec.
   useEffect(() => {
@@ -268,6 +285,35 @@ ${rows.join("\n")}
         )}
 
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.note")}</p>
+      </div>
+
+      {/* Absorver: vira os salvos em RECEITA no vault, automático (visão IA) */}
+      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[13.5px] font-bold text-[var(--color-paper)]">{t("saved.absTitle")}</div>
+            <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-slate)]">{t("saved.absIntro")}</p>
+          </div>
+          <button onClick={absorb} disabled={absBusy}
+            className="shrink-0 rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110 active:scale-[.99] disabled:opacity-50">
+            {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
+          </button>
+        </div>
+        {abs && (
+          <div className="mt-4">
+            <div className="flex flex-wrap gap-4 text-[12.5px]">
+              <span className="text-[var(--color-slate)]">{t("saved.absOk")}: <b className="text-[#3ad07a] tabular-nums">{nf(abs.ok)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absSkip")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs.skip)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absDup")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs.dup)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absFail")}: <b className="text-[var(--color-coral2)] tabular-nums">{nf(abs.fail)}</b></span>
+              {abs.finished && <span className="font-bold text-[var(--color-teal2)]">{t("saved.absDone")}</span>}
+            </div>
+            <div className="mt-2 max-h-40 overflow-auto rounded-lg border border-[var(--color-line)] bg-[#090d15] p-2 font-mono text-[11px] leading-relaxed text-[var(--color-slate)]">
+              {abs.tail.map((l, i) => <div key={i} className="truncate">{l}</div>)}
+            </div>
+          </div>
+        )}
+        <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.absNote")}</p>
       </div>
 
       {err && <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>}

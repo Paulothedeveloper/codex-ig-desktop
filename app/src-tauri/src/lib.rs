@@ -316,6 +316,44 @@ async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>, 
     ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or(""), total.unwrap_or(0)).await
 }
 
+/// ABSORVER: dispara o motor (node) que vira os últimos N salvos em receita no vault.
+/// Embute o script (include_str) -> escreve no temp -> roda node destacado. Progresso via absorb_status.
+#[tauri::command]
+fn absorb_run(limit: Option<u32>) -> Result<String, String> {
+    let work = std::env::temp_dir().join("codexig-absorb");
+    std::fs::create_dir_all(&work).map_err(|e| format!("criar pasta: {e}"))?;
+    let script = work.join("absorb_saved.mjs");
+    std::fs::write(&script, include_str!("../../scripts/absorb_saved.mjs")).map_err(|e| format!("escrever script: {e}"))?;
+    let _ = std::fs::write(work.join("absorb.log"), ""); // zera o log
+    let n = limit.unwrap_or(100).to_string();
+    std::process::Command::new("node")
+        .arg(&script)
+        .arg(&n)
+        .current_dir(&work)
+        .spawn()
+        .map_err(|e| format!("não consegui rodar o node (instalado?): {e}"))?;
+    Ok("started".into())
+}
+
+/// Status do motor de absorção (lê o log): contagens + últimas linhas + se terminou.
+#[tauri::command]
+fn absorb_status() -> Result<serde_json::Value, String> {
+    let log = std::env::temp_dir().join("codexig-absorb").join("absorb.log");
+    let txt = std::fs::read_to_string(&log).unwrap_or_default();
+    let lines: Vec<&str> = txt.lines().collect();
+    let count = |p: &str| lines.iter().filter(|l| l.starts_with(p)).count();
+    let tail: Vec<String> = lines.iter().rev().take(14).rev().map(|s| s.to_string()).collect();
+    let finished = lines.iter().rev().take(2).any(|l| l.contains("=== FIM"));
+    Ok(serde_json::json!({
+        "ok": count("[ok"),
+        "skip": count("[skip"),
+        "fail": count("[fail"),
+        "dup": count("[dup"),
+        "finished": finished,
+        "tail": tail,
+    }))
+}
+
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
 #[tauri::command]
 async fn ig_destroy(app: tauri::AppHandle, pk: String) -> Result<(), String> {
@@ -409,6 +447,8 @@ pub fn run() {
             ig_saved,
             ig_collections,
             ig_collection,
+            absorb_run,
+            absorb_status,
             ig_capture_start,
             ig_capture_get,
             ig_capture_clear,
