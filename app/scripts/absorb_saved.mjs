@@ -1,7 +1,8 @@
 // Motor de absorção UNIFICADO (Codex IG): salvos -> receita detalhada no vault CERTO.
 // vídeo -> frames (yt-dlp) | foto/carrossel -> imagens (gallery-dl, anexa no vault).
 // Gemini 2.5-flash decide TEMA -> rota determinística (1 assunto = 1 vault; reusa ou cria) -> dedup.
-// Args: "codes:c1,c2,.."  OU  um número N (últimos N)  OU vazio (=100).
+// Args: argv[2] = "codes:c1,c2,.." OU número N (últimos N) OU vazio (=100).
+//       argv[3] = "vault:<Nome>" (destino forçado pelo usuário) OU vazio (auto = IA decide).
 import fs from "node:fs";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
@@ -20,8 +21,14 @@ const log = (m) => { try { fs.appendFileSync(LOG, m + "\n"); } catch {} console.
 function readKey(p) { try { const t = fs.readFileSync(p, "utf8"); const m = t.match(/AIza[0-9A-Za-z_\-]{30,}/); return m ? m[0] : t.trim().split(/\s+/).pop(); } catch { return null; } }
 const GKEY = readKey(`${HOME}/Documents/API KEY CLAUDE CODE/chave api paga google.txt`);
 
+// destino forçado pelo usuário (argv[3] = "vault:<Nome>"); vazio = auto (IA decide).
+const destArg = (process.argv[3] || "").trim();
+const FORCED = destArg.startsWith("vault:") ? destArg.slice(6).trim() : null;
+
 // ---- ROTA INTELIGENTE: tema -> {vault, dir, note}. Determinística = 1 assunto sempre no mesmo lugar.
 function route(tema, subtema, titulo) {
+  // usuário escolheu um vault fixo -> tudo cai lá, numa nota só.
+  if (FORCED) return { vault: FORCED, dir: `${VAULTS}/${FORCED}`, note: "Receitas dos Salvos" };
   const t = `${tema || ""} ${subtema || ""} ${titulo || ""}`.toLowerCase();
   // DaVinci = guarda-chuva de TODO audiovisual (pós + produção/câmera/foto/luz/composição)
   const davinci = /davinci|resolve|\bcor\b|color|grad|\blut\b|dctl|edic|\bedit|corte|transi|fusion|\bvfx\b|motion|keyframe|\baudio\b|\bsom\b|fairlight|legenda|caption|subtitle|plugin|premiere|after ?effects|capcut|filmmak|cinematic|c[aâ]mera|fotograf|\bfoto\b|ilumina|\bluz\b|composi[çc]|enquadr|\blente\b|exposi[çc]|slow ?motion|\bvideo\b|v[ií]deo|reel|storytell|roteir|gravar|captac|produ[çc][aã]o audiovisual/;
@@ -91,7 +98,7 @@ let codes;
 if (arg.startsWith("codes:")) codes = arg.slice(6).split(",").map((s) => s.trim()).filter(Boolean);
 else codes = Object.keys(st.items).slice(0, parseInt(arg, 10) || 100);
 
-log(`\n=== ABSORB ${new Date().toISOString()} — ${codes.length} itens (${arg.startsWith("codes:") ? "selecionados" : "top " + arg}) ===`);
+log(`\n=== ABSORB ${new Date().toISOString()} — ${codes.length} itens (${arg.startsWith("codes:") ? "selecionados" : "top " + arg}) → ${FORCED ? "vault: " + FORCED : "auto (IA decide)"} ===`);
 let done = 0, skip = 0, fail = 0, dup = 0;
 const titleCache = {};
 for (const code of codes) {

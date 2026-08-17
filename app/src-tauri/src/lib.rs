@@ -358,7 +358,11 @@ fn quartzo_status() -> serde_json::Value {
 /// ABSORVER: dispara o motor (node) que vira os salvos em receita no vault. GATE Quartzo Pro.
 /// `codes` = absorve só esses (seleção do usuário); senão `limit` (últimos N). Progresso via absorb_status.
 #[tauri::command]
-fn absorb_run(limit: Option<u32>, codes: Option<Vec<String>>) -> Result<String, String> {
+fn absorb_run(
+    limit: Option<u32>,
+    codes: Option<Vec<String>>,
+    dest: Option<String>,
+) -> Result<String, String> {
     // GATE: sem Quartzo Pro, a feature não roda.
     if !quartzo_status()["pro"].as_bool().unwrap_or(false) {
         return Err("QUARTZO_REQUIRED".into());
@@ -374,6 +378,10 @@ fn absorb_run(limit: Option<u32>, codes: Option<Vec<String>>) -> Result<String, 
     };
     let mut cmd = std::process::Command::new("node");
     cmd.arg(&script).arg(&arg).current_dir(&work);
+    // destino forçado pelo usuário (vault existente / novo / da coleção); vazio = auto.
+    if let Some(d) = dest.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        cmd.arg(format!("vault:{d}"));
+    }
     // Windows: roda o node SEM abrir janela de console (CREATE_NO_WINDOW) — o progresso
     // aparece só dentro do app (painel), nunca um CMD preto na cara do usuário.
     #[cfg(windows)]
@@ -403,6 +411,23 @@ fn absorb_status() -> Result<serde_json::Value, String> {
         "finished": finished,
         "tail": tail,
     }))
+}
+
+/// Lista os vaults existentes (pastas em G:\VAULTS) pro usuário escolher o destino da absorção.
+#[tauri::command]
+fn list_vaults() -> Vec<String> {
+    let base = std::path::Path::new("G:/Meu Drive/VAULTS");
+    let mut v: Vec<String> = std::fs::read_dir(base)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| !n.starts_with('_') && !n.starts_with('.'))
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
 }
 
 /// Unfollow de uma conta (o chamador ritma/whitelista; para no BLOCK 429/400).
@@ -500,6 +525,7 @@ pub fn run() {
             ig_collection,
             absorb_run,
             absorb_status,
+            list_vaults,
             quartzo_status,
             ig_capture_start,
             ig_capture_get,
