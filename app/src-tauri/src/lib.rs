@@ -316,19 +316,65 @@ async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>, 
     ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or(""), total.unwrap_or(0)).await
 }
 
-/// ABSORVER: dispara o motor (node) que vira os últimos N salvos em receita no vault.
-/// Embute o script (include_str) -> escreve no temp -> roda node destacado. Progresso via absorb_status.
+/// GATE: o Quartzo (comprado+instalado) é OBRIGATÓRIO pra essa feature. Detecta o app +
+/// valida a licença Pro (lê o license.json do Quartzo e decodifica o token kind/exp).
+/// Sem crypto-verify aqui (o Quartzo já valida a assinatura); MVP = install + token pago/owner válido.
+/// ponytail: decode-only; hardening futuro = verificar Ed25519 c/ a pubkey do Quartzo.
 #[tauri::command]
-fn absorb_run(limit: Option<u32>) -> Result<String, String> {
+fn quartzo_status() -> serde_json::Value {
+    use base64::Engine;
+    let appdata = std::env::var("APPDATA").unwrap_or_default();
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let data_dir = format!("{appdata}\\com.quartzo.app");
+    let installed = std::path::Path::new(&format!("{local}\\Quartzo")).exists()
+        || std::path::Path::new(&data_dir).exists();
+    let mut pro = false;
+    let mut kind = String::new();
+    if let Ok(s) = std::fs::read_to_string(format!("{data_dir}\\license.json")) {
+        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&s) {
+            if let Some(tok) = j["token"].as_str() {
+                if let Some(pb) = tok.split('.').next() {
+                    if let Ok(bytes) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(pb) {
+                        if let Ok(p) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            kind = p["kind"].as_str().unwrap_or("").to_string();
+                            let exp = p["exp"].as_u64().unwrap_or(0);
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
+                            let grace = if kind == "trial" { 0 } else { 7 * 86400 };
+                            if (kind == "paid" || kind == "owner") && now < exp + grace {
+                                pro = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    serde_json::json!({ "installed": installed, "pro": pro, "kind": kind })
+}
+
+/// ABSORVER: dispara o motor (node) que vira os salvos em receita no vault. GATE Quartzo Pro.
+/// `codes` = absorve só esses (seleção do usuário); senão `limit` (últimos N). Progresso via absorb_status.
+#[tauri::command]
+fn absorb_run(limit: Option<u32>, codes: Option<Vec<String>>) -> Result<String, String> {
+    // GATE: sem Quartzo Pro, a feature não roda.
+    if !quartzo_status()["pro"].as_bool().unwrap_or(false) {
+        return Err("QUARTZO_REQUIRED".into());
+    }
     let work = std::env::temp_dir().join("codexig-absorb");
     std::fs::create_dir_all(&work).map_err(|e| format!("criar pasta: {e}"))?;
     let script = work.join("absorb_saved.mjs");
     std::fs::write(&script, include_str!("../../scripts/absorb_saved.mjs")).map_err(|e| format!("escrever script: {e}"))?;
     let _ = std::fs::write(work.join("absorb.log"), ""); // zera o log
-    let n = limit.unwrap_or(100).to_string();
+    let arg = match codes {
+        Some(c) if !c.is_empty() => format!("codes:{}", c.join(",")),
+        _ => limit.unwrap_or(100).to_string(),
+    };
     std::process::Command::new("node")
         .arg(&script)
-        .arg(&n)
+        .arg(&arg)
         .current_dir(&work)
         .spawn()
         .map_err(|e| format!("não consegui rodar o node (instalado?): {e}"))?;
@@ -449,6 +495,7 @@ pub fn run() {
             ig_collection,
             absorb_run,
             absorb_status,
+            quartzo_status,
             ig_capture_start,
             ig_capture_get,
             ig_capture_clear,
