@@ -21,9 +21,10 @@ function readKey(p) { try { const t = fs.readFileSync(p, "utf8"); const m = t.ma
 const GKEY = readKey(`${HOME}/Documents/API KEY CLAUDE CODE/chave api paga google.txt`);
 
 // ---- ROTA INTELIGENTE: tema -> {vault, dir, note}. Determinística = 1 assunto sempre no mesmo lugar.
-function route(tema, subtema) {
-  const t = `${tema || ""} ${subtema || ""}`.toLowerCase();
-  const davinci = /davinci|resolve|\bcor\b|color|grad|\blut\b|dctl|edic|\bedit|corte|transi|fusion|\bvfx\b|motion|keyframe|\baudio\b|\bsom\b|fairlight|legenda|caption|subtitle|plugin|premiere|after ?effects|capcut|filmmak|cinematic/;
+function route(tema, subtema, titulo) {
+  const t = `${tema || ""} ${subtema || ""} ${titulo || ""}`.toLowerCase();
+  // DaVinci = guarda-chuva de TODO audiovisual (pós + produção/câmera/foto/luz/composição)
+  const davinci = /davinci|resolve|\bcor\b|color|grad|\blut\b|dctl|edic|\bedit|corte|transi|fusion|\bvfx\b|motion|keyframe|\baudio\b|\bsom\b|fairlight|legenda|caption|subtitle|plugin|premiere|after ?effects|capcut|filmmak|cinematic|c[aâ]mera|fotograf|\bfoto\b|ilumina|\bluz\b|composi[çc]|enquadr|\blente\b|exposi[çc]|slow ?motion|\bvideo\b|v[ií]deo|reel|storytell|roteir|gravar|captac|produ[çc][aã]o audiovisual/;
   if (davinci.test(t)) {
     let note = "99i ✂️ - Receitas dos Salvos — EDIÇÃO"; // default edição
     if (/\bcor\b|color|grad|\blut\b|dctl|tonal|cinematic|colorist/.test(t)) note = "99h 🎨 - Receitas dos Salvos — COLOR";
@@ -31,6 +32,7 @@ function route(tema, subtema) {
     else if (/\baudio\b|\bsom\b|music|fairlight|\bvoz\b|sfx/.test(t)) note = "99k 🔊 - Receitas dos Salvos — ÁUDIO";
     else if (/legenda|caption|subtitle|texto na tela/.test(t)) note = "99l 🔤 - Receitas dos Salvos — LEGENDA";
     else if (/plugin|preset|template|after ?effects|capcut/.test(t)) note = "99m 🔌 - Receitas dos Salvos — PLUGIN";
+    else if (/c[aâ]mera|fotograf|\bfoto\b|ilumina|\bluz\b|composi[çc]|enquadr|\blente\b|exposi[çc]|gravar|captac|slow ?motion/.test(t)) note = "99n 🎥 - Receitas dos Salvos — PRODUÇÃO & CÂMERA";
     return { vault: "WINDOWS - DAVINCI RESOLVE", dir: DV, note };
   }
   if (/concurso|edital|estudo|prova|questao|questão|oab|cespe|vunesp/.test(t))
@@ -102,7 +104,7 @@ for (const code of codes) {
   let rec;
   try { rec = await gemini(it.c || "", paths, isPhoto); } catch (e) { fail++; log(`[fail] ${code} ${e.message}`); try { fs.rmSync(out, { recursive: true, force: true }); } catch {} continue; }
   if (!rec.keep) { it.detalhe = true; it.n = "(skip)"; skip++; log(`[skip] ${code} — ${rec.titulo || "sem técnica"}`); try { fs.rmSync(out, { recursive: true, force: true }); } catch {} fs.writeFileSync(STATE, JSON.stringify(st, null, 0)); continue; }
-  const rt = route(rec.tema, rec.subtema);
+  const rt = route(rec.tema, rec.subtema, rec.titulo);
   const notePath = ensureNote(rt.dir, rt.note);
   titleCache[notePath] = titleCache[notePath] || titlesOf(notePath);
   if (titleCache[notePath].has(norm(rec.titulo))) { it.detalhe = true; it.n = rt.note; it.vault = rt.vault; dup++; log(`[dup] ${code} — ${rec.titulo}`); try { fs.rmSync(out, { recursive: true, force: true }); } catch {} fs.writeFileSync(STATE, JSON.stringify(st, null, 0)); continue; }
