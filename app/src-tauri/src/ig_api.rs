@@ -232,6 +232,13 @@ catch(e){{window.__TAURI__.event.emit('ig_result',{{id:{id},ok:false,status:0,ur
                     || low.starts_with("<!doctype html")
                     || low.starts_with("<html")
                 {
+                    // LOG CRU: o shell HTML do IG traz "not-logged-in" como estado inicial MESMO logado —
+                    // se um endpoint devolve HTML (404/redirect) vira falso require_login. Grava pra saber a verdade.
+                    dbg_saved(&format!(
+                        "[webview_fetch LOGIN] status={status} url={final_url} ct={} body[0..400]={}",
+                        v["ct"].as_str().unwrap_or(""),
+                        body.chars().take(400).collect::<String>()
+                    ));
                     return Err(LOGIN.into());
                 }
             }
