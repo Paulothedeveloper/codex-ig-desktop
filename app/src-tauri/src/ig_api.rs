@@ -222,24 +222,26 @@ catch(e){{window.__TAURI__.event.emit('ig_result',{{id:{id},ok:false,status:0,ur
             if body.starts_with("ERR:") {
                 return Err(RATE.into());
             }
-            // IG serviu a PAGINA (HTML) em vez de JSON num endpoint de API:
-            // shell "not-logged-in" = sessao caida (ds_user_id sobrevive ao logout, engana o pre-check);
-            // qualquer HTML aqui = deslogado/checkpoint. Trata como LOGIN (o front mostra "faca login").
+            // IG serviu a PAGINA (HTML) em vez de JSON num endpoint de API. DOIS casos distintos:
+            //  (a) REDIRECIONOU pra fora de /api/v1 (homepage/login) = sessao caida/checkpoint -> LOGIN real
+            //      (no logout o IG rebota a chamada pro homepage — licao de julho).
+            //  (b) HTML na PROPRIA url /api/v1 = o endpoint devolveu shell (rota errada/404). O shell do IG
+            //      carrega "not-logged-in" como estado inicial MESMO logado -> NAO e logout; erro honesto
+            //      pro chamador tratar (ex.: collection_feed tenta outra forma de URL).
             {
                 let low = body.trim_start().to_ascii_lowercase();
-                if low.contains("not-logged-in")
+                let is_html = low.contains("not-logged-in")
                     || low.contains("not_logged_in")
                     || low.starts_with("<!doctype html")
-                    || low.starts_with("<html")
-                {
-                    // LOG CRU: o shell HTML do IG traz "not-logged-in" como estado inicial MESMO logado —
-                    // se um endpoint devolve HTML (404/redirect) vira falso require_login. Grava pra saber a verdade.
+                    || low.starts_with("<html");
+                if is_html {
+                    let redirected = !final_url.contains("/api/v1/");
                     dbg_saved(&format!(
-                        "[webview_fetch LOGIN] status={status} url={final_url} ct={} body[0..400]={}",
+                        "[webview_fetch HTML] redirected={redirected} status={status} url={final_url} ct={} body[0..400]={}",
                         v["ct"].as_str().unwrap_or(""),
                         body.chars().take(400).collect::<String>()
                     ));
-                    return Err(LOGIN.into());
+                    return Err(if redirected { LOGIN.into() } else { "HTML_ON_API".into() });
                 }
             }
             // Bloqueio temporario do IG: responde 401 JSON "Aguarde alguns minutos..." OU redireciona
@@ -904,27 +906,53 @@ pub async fn collection_feed(
     if collection_id.is_empty() || !collection_id.chars().all(|c| c.is_ascii_digit()) {
         return Err("collection_id invalido".into());
     }
-    let mut out = Vec::new();
-    let mut next = String::new();
-    for _ in 0..120 {
-        let url = format!(
-            "https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/?count=50{}",
-            if next.is_empty() { String::new() } else { format!("&max_id={next}") }
-        );
-        let j = webview_fetch(app, &url, false, &s.csrf).await?;
-        parse_saved_items(&j, collection_name, &mut out);
-        emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
-        next = j["next_max_id"]
-            .as_str()
-            .map(String::from)
-            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
-            .unwrap_or_default();
-        if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
-            break;
+    dbg_saved(&format!("=== collection_feed inicio (id={collection_id} name='{collection_name}') ==="));
+    // formas de URL do endpoint de posts de UMA colecao (web varia — 1a que responder JSON vence).
+    // com/sem count e com/sem /posts/ cobrem as variacoes que servem HTML (falso require_login).
+    let bases = [
+        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/?count=50"),
+        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/"),
+        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/?count=50"),
+    ];
+    let mut last_err = String::from("nenhuma forma de URL da colecao respondeu");
+    for base in &bases {
+        let mut out = Vec::new();
+        let mut next = String::new();
+        let mut ok_base = true;
+        for _ in 0..120 {
+            let url = if next.is_empty() {
+                base.clone()
+            } else {
+                let sep = if base.contains('?') { '&' } else { '?' };
+                format!("{base}{sep}max_id={next}")
+            };
+            match webview_fetch(app, &url, false, &s.csrf).await {
+                Ok(j) => {
+                    parse_saved_items(&j, collection_name, &mut out);
+                    emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
+                    next = j["next_max_id"]
+                        .as_str()
+                        .map(String::from)
+                        .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+                        .unwrap_or_default();
+                    if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(jitter_ms(900))).await;
+                }
+                // LOGIN/RATE sao terminais (sessao/bloqueio) — nao adianta trocar de forma.
+                Err(e) if e == LOGIN || e == RATE => return Err(e),
+                // HTML_ON_API / HTTP erro nesta forma -> tenta a proxima forma de URL.
+                Err(e) => { last_err = e; ok_base = false; break; }
+            }
         }
-        tokio::time::sleep(Duration::from_millis(jitter_ms(900))).await;
+        if ok_base {
+            dbg_saved(&format!("[OK colecao] {} itens", out.len()));
+            return Ok(out);
+        }
+        dbg_saved(&format!("[falhou forma] {last_err} — tenta proxima"));
     }
-    Ok(out)
+    Err(last_err)
 }
 
 /// PURA: nao-seguidores = seguindo - seguidores (por pk). Unit-testavel, sem rede.
