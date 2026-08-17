@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+import SessionError from "../SessionError";
 
 type Progress = { count: number; total: number; code: string; caption: string; thumb: string; is_video: boolean };
 
@@ -432,7 +433,7 @@ ${rows.join("\n")}
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.absNote")}</p>
       </div>
 
-      {err && <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>}
+      {err && <SessionError err={err} onRetry={() => pull(false)} failedKey="saved.failed" />}
       {msg && <div className="pop rounded-xl border border-[var(--color-teal)]/40 bg-[#08201c] px-4 py-3 text-[13px] text-[var(--color-teal2)]">{msg}</div>}
 
       {loading && (
