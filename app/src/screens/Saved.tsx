@@ -90,8 +90,25 @@ export default function Saved() {
   const [abs, setAbs] = useState<{ ok: number; skip: number; fail: number; dup: number; finished: boolean; tail: string[] } | null>(null);
   const [qz, setQz] = useState<Quartzo | null>(null); // gate: Quartzo obrigatório
   const [sel, setSel] = useState<Set<string>>(new Set()); // posts selecionados p/ absorver
+  // destino da absorção: auto (IA decide) | vault existente | vault novo | da coleção
+  const [destMode, setDestMode] = useState<"auto" | "existing" | "new" | "collection">("auto");
+  const [vaults, setVaults] = useState<string[]>([]);
+  const [destVault, setDestVault] = useState(""); // vault existente escolhido
+  const [newVault, setNewVault] = useState(""); // nome do vault novo
 
   useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
+  useEffect(() => { invoke<string[]>("list_vaults").then(setVaults).catch(() => { }); }, []);
+  // saiu do modo coleção? "da coleção" deixa de valer -> volta pro auto.
+  useEffect(() => { if (mode !== "collection" && destMode === "collection") setDestMode("auto"); }, [mode, destMode]);
+
+  // resolve o destino escolhido -> nome do vault (ou undefined = auto/IA decide).
+  const collName = () => cols.find((c) => c.id === colId)?.name || "";
+  function resolveDest(): string | undefined {
+    if (destMode === "existing") return destVault || undefined;
+    if (destMode === "new") return newVault.trim() || undefined;
+    if (destMode === "collection") return collName() || undefined;
+    return undefined; // auto
+  }
 
   const toggleSel = (code: string) => setSel((s) => { const n = new Set(s); n.has(code) ? n.delete(code) : n.add(code); return n; });
 
@@ -101,7 +118,8 @@ export default function Saved() {
     if (!qz?.pro) { setErr(t("saved.qzNeed")); return; }
     setAbsBusy(true); setAbs(null); setErr("");
     try {
-      await invoke("absorb_run", codes && codes.length ? { codes } : { limit: 100 });
+      const dest = resolveDest();
+      await invoke("absorb_run", { ...(codes && codes.length ? { codes } : { limit: 100 }), dest });
     } catch (e) { setErr(String(e) === "QUARTZO_REQUIRED" ? t("saved.qzNeed") : String(e)); setAbsBusy(false); return; }
     const poll = setInterval(async () => {
       try {
@@ -355,6 +373,35 @@ ${rows.join("\n")}
             </button>
           </div>
         </div>
+
+        {/* DESTINO: o usuário decide onde as notas vão parar (ou deixa a IA escolher) */}
+        <div className="mt-4 border-t border-[var(--color-line)] pt-4">
+          <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.destLabel")}</div>
+          <div className="flex flex-wrap items-end gap-3">
+            <Select ariaLabel={t("saved.destLabel")} value={destMode} onChange={(v) => setDestMode(v as typeof destMode)}
+              options={[
+                { value: "auto", label: t("saved.destAuto") },
+                { value: "existing", label: t("saved.destExisting") },
+                { value: "new", label: t("saved.destNew") },
+                ...(mode === "collection" && colId ? [{ value: "collection", label: t("saved.destColl") }] : []),
+              ]} />
+            {destMode === "existing" && (
+              <div className="min-w-[220px]">
+                <Select ariaLabel={t("saved.destPick")} value={destVault} onChange={setDestVault}
+                  options={vaults.length ? vaults.map((v) => ({ value: v, label: v })) : [{ value: "", label: t("saved.destNoVaults") }]} />
+              </div>
+            )}
+            {destMode === "new" && (
+              <input value={newVault} onChange={(e) => setNewVault(e.target.value)} placeholder={t("saved.destNewPh")}
+                className="min-w-[220px] rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
+            )}
+            {destMode === "collection" && (
+              <span className="rounded-full border border-[var(--color-steel)] px-3 py-1.5 text-[12px] text-[var(--color-paper)]">{collName() || "—"}</span>
+            )}
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.destHint")}</p>
+        </div>
+
         {(abs || absBusy) && (
           <div className="pop mt-4 rounded-xl border border-[#7c3aed]/30 bg-[#0e1522] p-4">
             <div className="mb-3 flex items-center gap-2">
