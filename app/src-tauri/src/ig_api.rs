@@ -895,7 +895,28 @@ pub async fn collections_list(app: &tauri::AppHandle, s: &Session) -> Result<Vec
     Ok(out)
 }
 
-/// Itens de UMA colecao (o nome vira o tema). `/api/v1/feed/collection/{id}/posts/`.
+/// True se a media pertence a colecao `cid` (campo `saved_collection_ids`, no item ou na media).
+fn media_in_collection(it: &serde_json::Value, m: &serde_json::Value, cid: &str) -> bool {
+    for src in [it.get("saved_collection_ids"), m.get("saved_collection_ids")] {
+        if let Some(arr) = src.and_then(|v| v.as_array()) {
+            for v in arr {
+                let id = v
+                    .as_str()
+                    .map(String::from)
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+                    .unwrap_or_default();
+                if id == cid {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Itens de UMA colecao (o nome vira o tema). O IG MATOU `/feed/collection/{id}/posts/` (404, jul/2026);
+/// o unico caminho web e puxar o saved feed geral (`/feed/saved/posts/`) e FILTRAR por `saved_collection_ids`.
+/// Ref: github.com/gabrielvf1/instagram-saved-collections-fix. Early-stop ao achar a colecao inteira; parcial no throttle.
 pub async fn collection_feed(
     app: &tauri::AppHandle,
     s: &Session,
@@ -906,53 +927,60 @@ pub async fn collection_feed(
     if collection_id.is_empty() || !collection_id.chars().all(|c| c.is_ascii_digit()) {
         return Err("collection_id invalido".into());
     }
-    dbg_saved(&format!("=== collection_feed inicio (id={collection_id} name='{collection_name}') ==="));
-    // formas de URL do endpoint de posts de UMA colecao (web varia — 1a que responder JSON vence).
-    // com/sem count e com/sem /posts/ cobrem as variacoes que servem HTML (falso require_login).
-    let bases = [
-        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/?count=50"),
-        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/"),
-        format!("https://www.instagram.com/api/v1/feed/collection/{collection_id}/?count=50"),
-    ];
-    let mut last_err = String::from("nenhuma forma de URL da colecao respondeu");
-    for base in &bases {
-        let mut out = Vec::new();
-        let mut next = String::new();
-        let mut ok_base = true;
-        for _ in 0..120 {
-            let url = if next.is_empty() {
-                base.clone()
-            } else {
-                let sep = if base.contains('?') { '&' } else { '?' };
-                format!("{base}{sep}max_id={next}")
-            };
-            match webview_fetch(app, &url, false, &s.csrf).await {
-                Ok(j) => {
-                    parse_saved_items(&j, collection_name, &mut out);
-                    emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
-                    next = j["next_max_id"]
-                        .as_str()
-                        .map(String::from)
-                        .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
-                        .unwrap_or_default();
-                    if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
-                        break;
+    dbg_saved(&format!(
+        "=== collection_feed (via saved feed, filtra id={collection_id} name='{collection_name}' total={total}) ==="
+    ));
+    const SAVED: &str = "https://www.instagram.com/api/v1/feed/saved/posts/";
+    let mut out = Vec::new();
+    let mut next = String::new();
+    let mut scanned = 0usize;
+    for _ in 0..120 {
+        let url = if next.is_empty() {
+            format!("{SAVED}?count=50")
+        } else {
+            format!("{SAVED}?count=50&max_id={next}")
+        };
+        let j = match webview_fetch(app, &url, false, &s.csrf).await {
+            Ok(j) => j,
+            // throttle no meio: devolve o parcial ja achado (melhor que perder tudo).
+            Err(e) if e == RATE && !out.is_empty() => {
+                dbg_saved(&format!("[colecao throttle] parcial {} itens", out.len()));
+                break;
+            }
+            Err(e) => return Err(e),
+        };
+        if let Some(arr) = j["items"].as_array() {
+            for it in arr {
+                scanned += 1;
+                let m = if it.get("media").is_some() { &it["media"] } else { it };
+                if media_in_collection(it, m, collection_id) {
+                    let si = parse_saved_media(m, collection_name);
+                    if !si.code.is_empty() {
+                        out.push(si);
                     }
-                    tokio::time::sleep(Duration::from_millis(jitter_ms(900))).await;
                 }
-                // LOGIN/RATE sao terminais (sessao/bloqueio) — nao adianta trocar de forma.
-                Err(e) if e == LOGIN || e == RATE => return Err(e),
-                // HTML_ON_API / HTTP erro nesta forma -> tenta a proxima forma de URL.
-                Err(e) => { last_err = e; ok_base = false; break; }
             }
         }
-        if ok_base {
-            dbg_saved(&format!("[OK colecao] {} itens", out.len()));
-            return Ok(out);
+        emit_saved_progress(app, out.len(), total, out.last()); // tela de transferencia
+        // achou a colecao inteira? para (evita varrer 1500 salvos por 157).
+        if total > 0 && out.len() as i64 >= total {
+            break;
         }
-        dbg_saved(&format!("[falhou forma] {last_err} — tenta proxima"));
+        next = j["next_max_id"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| j["next_max_id"].as_i64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        if next.is_empty() || !j["more_available"].as_bool().unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(jitter_ms(900))).await;
     }
-    Err(last_err)
+    dbg_saved(&format!(
+        "[colecao via saved] {scanned} salvos varridos -> {} na colecao '{collection_name}'",
+        out.len()
+    ));
+    Ok(out)
 }
 
 /// PURA: nao-seguidores = seguindo - seguidores (por pk). Unit-testavel, sem rede.
