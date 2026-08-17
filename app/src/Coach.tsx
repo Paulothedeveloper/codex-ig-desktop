@@ -10,6 +10,9 @@ type Step = { id: string; target: string };
 const STEPS: Step[] = [
   { id: "instagram", target: "nav-instagram" },
   { id: "report", target: "nav-report" },
+  { id: "posts", target: "nav-posts" },
+  { id: "saved", target: "nav-saved" },
+  { id: "busca", target: "nav-busca" },
   { id: "clicks", target: "nav-clicks" },
   { id: "config", target: "nav-config" },
 ];
