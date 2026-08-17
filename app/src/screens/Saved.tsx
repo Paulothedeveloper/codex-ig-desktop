@@ -255,6 +255,18 @@ ${rows.join("\n")}
   const inferVault = (r?: Rec) => r?.vault || (/^99[a-z]/.test(r?.n || "") ? "WINDOWS - DAVINCI RESOLVE" : /concurso|estudo/i.test(r?.n || "") ? "ESTUDOS - CONCURSO" : /\bIA\b|ideia/i.test(r?.n || "") ? "IDEIAS SALVAS" : "");
   const isAbsorbed = (r?: Rec) => !!(r && (r.detalhe || (r as any).receita) && r.n && r.n !== "(skip)" && r.n !== "(sem mídia)" && r.n !== "(sem vídeo/foto)" && r.n !== "(foto/sem-vídeo)");
 
+  // formata linha do log do motor -> linha amigável (sem código cru) pro painel
+  const fmtLine = (l: string): { icon: string; cls: string; text: string; vault?: string } | null => {
+    let m = l.match(/^\[ok:(.+?)\]\s+\S+\s+—\s+(.+)$/);
+    if (m) return { icon: "✓", cls: "text-[#3ad07a]", text: m[2], vault: vaultShort(m[1]) };
+    m = l.match(/^\[skip\]\s+\S+(?:\s+—\s+(.+))?$/);
+    if (m) return { icon: "·", cls: "text-[var(--color-slate)]", text: t("saved.lgSkip") + (m[1] ? ": " + m[1] : "") };
+    m = l.match(/^\[dup\]\s+\S+(?:\s+—\s+(.+))?$/);
+    if (m) return { icon: "≡", cls: "text-[var(--color-slate)]", text: t("saved.lgDup") + (m[1] ? ": " + m[1] : "") };
+    if (l.startsWith("[fail")) return { icon: "×", cls: "text-[var(--color-coral2)]", text: t("saved.lgFail") };
+    return null; // linhas === ... não mostra
+  };
+
   // badge de status de um item na lista
   const badge = (code: string) => {
     const r = rec[code];
@@ -343,18 +355,31 @@ ${rows.join("\n")}
             </button>
           </div>
         </div>
-        {abs && (
-          <div className="mt-4">
-            <div className="flex flex-wrap gap-4 text-[12.5px]">
-              <span className="text-[var(--color-slate)]">{t("saved.absOk")}: <b className="text-[#3ad07a] tabular-nums">{nf(abs.ok)}</b></span>
-              <span className="text-[var(--color-slate)]">{t("saved.absSkip")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs.skip)}</b></span>
-              <span className="text-[var(--color-slate)]">{t("saved.absDup")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs.dup)}</b></span>
-              <span className="text-[var(--color-slate)]">{t("saved.absFail")}: <b className="text-[var(--color-coral2)] tabular-nums">{nf(abs.fail)}</b></span>
-              {abs.finished && <span className="font-bold text-[var(--color-teal2)]">{t("saved.absDone")}</span>}
+        {(abs || absBusy) && (
+          <div className="pop mt-4 rounded-xl border border-[#7c3aed]/30 bg-[#0e1522] p-4">
+            <div className="mb-3 flex items-center gap-2">
+              {absBusy && !abs?.finished && <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#a855f7]" />}
+              <span className="text-[13px] font-bold text-[var(--color-paper)]">
+                {abs?.finished ? t("saved.absDone") : t("saved.absRunning")}
+              </span>
             </div>
-            <div className="mt-2 max-h-40 overflow-auto rounded-lg border border-[var(--color-line)] bg-[#090d15] p-2 font-mono text-[11px] leading-relaxed text-[var(--color-slate)]">
-              {abs.tail.map((l, i) => <div key={i} className="truncate">{l}</div>)}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
+              <span className="text-[var(--color-slate)]">{t("saved.absOk")}: <b className="text-[#3ad07a] tabular-nums">{nf(abs?.ok || 0)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absSkip")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs?.skip || 0)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absDup")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs?.dup || 0)}</b></span>
+              <span className="text-[var(--color-slate)]">{t("saved.absFail")}: <b className="text-[var(--color-coral2)] tabular-nums">{nf(abs?.fail || 0)}</b></span>
             </div>
+            {abs?.tail?.length ? (
+              <div className="mt-3 max-h-44 space-y-1 overflow-auto">
+                {abs.tail.map(fmtLine).filter(Boolean).reverse().map((r, i) => (
+                  <div key={i} className="flex items-baseline gap-2 text-[12px]">
+                    <span className={"shrink-0 font-bold " + r!.cls}>{r!.icon}</span>
+                    <span className="truncate text-[var(--color-ink)]">{r!.text}</span>
+                    {r!.vault ? <span className="ml-auto shrink-0 text-[10.5px] text-[var(--color-slate)]">{r!.vault}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.absNote")}</p>

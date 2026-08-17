@@ -372,11 +372,16 @@ fn absorb_run(limit: Option<u32>, codes: Option<Vec<String>>) -> Result<String, 
         Some(c) if !c.is_empty() => format!("codes:{}", c.join(",")),
         _ => limit.unwrap_or(100).to_string(),
     };
-    std::process::Command::new("node")
-        .arg(&script)
-        .arg(&arg)
-        .current_dir(&work)
-        .spawn()
+    let mut cmd = std::process::Command::new("node");
+    cmd.arg(&script).arg(&arg).current_dir(&work);
+    // Windows: roda o node SEM abrir janela de console (CREATE_NO_WINDOW) — o progresso
+    // aparece só dentro do app (painel), nunca um CMD preto na cara do usuário.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    cmd.spawn()
         .map_err(|e| format!("não consegui rodar o node (instalado?): {e}"))?;
     Ok("started".into())
 }
