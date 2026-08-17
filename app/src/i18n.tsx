@@ -374,6 +374,7 @@ const PT: Dict = {
   "saved.absSel": "Absorver selecionados ({n})",
   "saved.bSkip": "sem técnica",
   "saved.selHint": "Selecionar pra virar vault",
+  "saved.lgSkip": "pulado (sem técnica)", "saved.lgDup": "repetido", "saved.lgFail": "falhou",
   "coach.config.t": "4 · Conta e idioma",
   "coach.config.b": "Veja a sessão, exporte a whitelist e troque o idioma quando quiser.",
 };
@@ -728,6 +729,7 @@ const EN: Dict = {
   "saved.absSel": "Absorb selected ({n})",
   "saved.bSkip": "no technique",
   "saved.selHint": "Select to turn into vault",
+  "saved.lgSkip": "skipped (no technique)", "saved.lgDup": "duplicate", "saved.lgFail": "failed",
   "coach.config.t": "4 · Account and language",
   "coach.config.b": "See the session, export the whitelist and switch language whenever you want.",
 };
@@ -1082,6 +1084,7 @@ const ES: Dict = {
   "saved.absSel": "Absorber seleccionados ({n})",
   "saved.bSkip": "sin técnica",
   "saved.selHint": "Seleccionar para volver vault",
+  "saved.lgSkip": "saltado (sin técnica)", "saved.lgDup": "duplicado", "saved.lgFail": "falló",
   "coach.config.t": "4 · Cuenta e idioma",
   "coach.config.b": "Ve la sesión, exporta la lista blanca y cambia el idioma cuando quieras.",
 };
@@ -1436,6 +1439,7 @@ const FR: Dict = {
   "saved.absSel": "Absorber la sélection ({n})",
   "saved.bSkip": "sans technique",
   "saved.selHint": "Sélectionner pour créer le vault",
+  "saved.lgSkip": "ignoré (sans technique)", "saved.lgDup": "doublon", "saved.lgFail": "échec",
   "coach.config.t": "4 · Compte et langue",
   "coach.config.b": "Vois la session, exporte la liste blanche et change de langue quand tu veux.",
 };
@@ -1792,6 +1796,7 @@ const DE: Dict = {
   "saved.absSel": "Ausgewählte aufnehmen ({n})",
   "saved.bSkip": "keine Technik",
   "saved.selHint": "Zum Vault-Erstellen auswählen",
+  "saved.lgSkip": "übersprungen (keine Technik)", "saved.lgDup": "Duplikat", "saved.lgFail": "fehlgeschlagen",
 };
 
 const DICT: Record<Lang, Dict> = { pt: PT, en: EN, es: ES, fr: FR, de: DE };
