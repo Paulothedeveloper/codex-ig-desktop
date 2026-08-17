@@ -385,6 +385,8 @@ const PT: Dict = {
   "saved.destNewPh": "Nome do vault novo",
   "saved.destHint": "No automático, cada assunto vai pro vault certo (DaVinci, Concurso, IA…). Escolhendo um vault, tudo cai lá.",
   "saved.failed": "Não deu pra puxar: {e}",
+  "saved.cancel": "Cancelar",
+  "saved.canceling": "Cancelando…",
   "coach.config.t": "4 · Conta e idioma",
   "coach.config.b": "Veja a sessão, exporte a whitelist e troque o idioma quando quiser.",
 };
@@ -750,6 +752,8 @@ const EN: Dict = {
   "saved.destNewPh": "New vault name",
   "saved.destHint": "On automatic, each topic goes to the right vault (DaVinci, Studies, AI…). Pick a vault and everything lands there.",
   "saved.failed": "Couldn't pull: {e}",
+  "saved.cancel": "Cancel",
+  "saved.canceling": "Canceling…",
   "coach.config.t": "4 · Account and language",
   "coach.config.b": "See the session, export the whitelist and switch language whenever you want.",
 };
@@ -1115,6 +1119,8 @@ const ES: Dict = {
   "saved.destNewPh": "Nombre del vault nuevo",
   "saved.destHint": "En automático, cada tema va al vault correcto (DaVinci, Estudios, IA…). Si eliges un vault, todo cae allí.",
   "saved.failed": "No se pudo cargar: {e}",
+  "saved.cancel": "Cancelar",
+  "saved.canceling": "Cancelando…",
   "coach.config.t": "4 · Cuenta e idioma",
   "coach.config.b": "Ve la sesión, exporta la lista blanca y cambia el idioma cuando quieras.",
 };
@@ -1480,6 +1486,8 @@ const FR: Dict = {
   "saved.destNewPh": "Nom du nouveau vault",
   "saved.destHint": "En automatique, chaque sujet va dans le bon vault (DaVinci, Études, IA…). En choisissant un vault, tout y va.",
   "saved.failed": "Impossible de récupérer : {e}",
+  "saved.cancel": "Annuler",
+  "saved.canceling": "Annulation…",
   "coach.config.t": "4 · Compte et langue",
   "coach.config.b": "Vois la session, exporte la liste blanche et change de langue quand tu veux.",
 };
@@ -1847,6 +1855,8 @@ const DE: Dict = {
   "saved.destNewPh": "Name des neuen Vaults",
   "saved.destHint": "Automatisch landet jedes Thema im richtigen Vault (DaVinci, Lernen, KI…). Bei fester Wahl geht alles dorthin.",
   "saved.failed": "Konnte nicht laden: {e}",
+  "saved.cancel": "Abbrechen",
+  "saved.canceling": "Wird abgebrochen…",
 };
 
 const DICT: Record<Lang, Dict> = { pt: PT, en: EN, es: ES, fr: FR, de: DE };

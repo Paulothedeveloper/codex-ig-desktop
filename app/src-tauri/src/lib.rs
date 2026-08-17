@@ -298,8 +298,15 @@ async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Va
 /// SALVOS: um chunk dos itens salvos (+ cursor pra continuar). `resume` = cursor do chunk anterior.
 #[tauri::command]
 async fn ig_saved(app: tauri::AppHandle, resume: Option<String>) -> Result<ig_api::SavedResult, String> {
+    ig_api::saved_cancel_reset(); // limpa cancelamento de uma corrida anterior
     let s = sess(&app).await?;
     ig_api::saved_feed(&app, &s, resume.as_deref().unwrap_or("")).await
+}
+
+/// Cancela o "puxar salvos" em andamento (o loop devolve o parcial + cursor).
+#[tauri::command]
+fn ig_saved_cancel() {
+    ig_api::saved_cancel();
 }
 
 /// SALVOS: colecoes do usuario ([{id,name,count}]) — o nome vira dica de tema.
@@ -312,6 +319,7 @@ async fn ig_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>,
 /// SALVOS: itens de UMA colecao (o nome vira o tema no roteamento).
 #[tauri::command]
 async fn ig_collection(app: tauri::AppHandle, id: String, name: Option<String>, total: Option<i64>) -> Result<Vec<ig_api::SavedItem>, String> {
+    ig_api::saved_cancel_reset();
     let s = sess(&app).await?;
     ig_api::collection_feed(&app, &s, &id, name.as_deref().unwrap_or(""), total.unwrap_or(0)).await
 }
@@ -389,9 +397,30 @@ fn absorb_run(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    cmd.spawn()
+    let child = cmd.spawn()
         .map_err(|e| format!("não consegui rodar o node (instalado?): {e}"))?;
+    *ABSORB_PID.lock().unwrap() = Some(child.id()); // guarda o pid pro Cancelar matar
     Ok("started".into())
+}
+
+/// pid do node da absorção em andamento (pro botão Cancelar).
+static ABSORB_PID: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
+
+/// Cancela a absorção em andamento: mata o node + filhos (yt-dlp/gallery-dl). O estado
+/// (`_FILA-ESTADO.json`) já é gravado item-a-item, então parar no meio não corrompe nada.
+#[tauri::command]
+fn absorb_cancel() {
+    let pid = ABSORB_PID.lock().unwrap().take();
+    if let Some(pid) = pid {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .creation_flags(0x0800_0000)
+                .spawn();
+        }
+    }
 }
 
 /// Status do motor de absorção (lê o log): contagens + últimas linhas + se terminou.
@@ -525,6 +554,8 @@ pub fn run() {
             ig_collection,
             absorb_run,
             absorb_status,
+            absorb_cancel,
+            ig_saved_cancel,
             list_vaults,
             quartzo_status,
             ig_capture_start,
