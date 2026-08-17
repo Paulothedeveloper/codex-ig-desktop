@@ -7,11 +7,13 @@ export function Select({
   options,
   onChange,
   ariaLabel,
+  disabled,
 }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
   ariaLabel?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0); // índice destacado (teclado)
@@ -42,9 +44,10 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
+        disabled={disabled}
         onKeyDown={onKey}
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-2 py-1.5 text-left text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]"
+        className="w-full flex items-center justify-between bg-[#0a0f18] border border-[var(--color-steel)] rounded-lg px-2 py-1.5 text-left text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)] disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <span className="truncate">{cur?.label}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="text-[var(--color-slate)]"><path d="M6 9l6 6 6-6" /></svg>

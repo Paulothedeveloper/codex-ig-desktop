@@ -13,6 +13,13 @@ use tauri::{Emitter, Listener, Manager};
 pub const LOGIN: &str = "require_login"; // sentinela: sem sessao -> front mostra "faca login"
 pub const RATE: &str = "ig_rate_limited"; // IG limitou/bloqueou temporario -> front "espere uns minutos"
 
+// Cancelamento do "puxar salvos" (botao Cancelar): o loop de paginacao checa e para,
+// devolvendo o parcial ja puxado (com cursor pra continuar depois).
+static SAVED_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn saved_cancel() { SAVED_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst); }
+pub fn saved_cancel_reset() { SAVED_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst); }
+fn saved_cancelled() -> bool { SAVED_CANCEL.load(std::sync::atomic::Ordering::SeqCst) }
+
 /// Resultados dos fetch da webview, por id de request (preenchido pelo listener do evento).
 fn results() -> &'static Mutex<HashMap<u64, String>> {
     static R: OnceLock<Mutex<HashMap<u64, String>>> = OnceLock::new();
@@ -809,6 +816,11 @@ async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: 
     let mut next = start.to_string();
     let mut throttled = false;
     for page in 0..12 {
+        if saved_cancelled() { // usuario clicou Cancelar -> devolve parcial + cursor
+            dbg_saved("  <- CANCELADO pelo usuario");
+            throttled = !next.is_empty();
+            break;
+        }
         let sep = if base.contains('?') { "&" } else { "?" };
         let url = format!(
             "{base}{sep}count=50{}",
@@ -935,6 +947,10 @@ pub async fn collection_feed(
     let mut next = String::new();
     let mut scanned = 0usize;
     for _ in 0..120 {
+        if saved_cancelled() { // botao Cancelar: para de varrer, devolve o que achou ate agora
+            dbg_saved(&format!("[colecao CANCELADA] parcial {} itens", out.len()));
+            break;
+        }
         let url = if next.is_empty() {
             format!("{SAVED}?count=50")
         } else {

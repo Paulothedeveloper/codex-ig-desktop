@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
@@ -96,6 +96,8 @@ export default function Saved() {
   const [vaults, setVaults] = useState<string[]>([]);
   const [destVault, setDestVault] = useState(""); // vault existente escolhido
   const [newVault, setNewVault] = useState(""); // nome do vault novo
+  const [canceling, setCanceling] = useState(false); // Cancelar puxar/absorver clicado
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null); // interval do absorb_status
 
   useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
   useEffect(() => { invoke<string[]>("list_vaults").then(setVaults).catch(() => { }); }, []);
@@ -122,13 +124,20 @@ export default function Saved() {
       const dest = resolveDest();
       await invoke("absorb_run", { ...(codes && codes.length ? { codes } : { limit: 100 }), dest });
     } catch (e) { setErr(String(e) === "QUARTZO_REQUIRED" ? t("saved.qzNeed") : String(e)); setAbsBusy(false); return; }
-    const poll = setInterval(async () => {
+    pollRef.current = setInterval(async () => {
       try {
         const s = await invoke<typeof abs>("absorb_status");
         setAbs(s);
-        if (s?.finished) { clearInterval(poll); setAbsBusy(false); reloadRec(); }
+        if (s?.finished) { if (pollRef.current) clearInterval(pollRef.current); setAbsBusy(false); reloadRec(); }
       } catch { /* segue */ }
     }, 4000);
+  }
+
+  // Cancela a absorção: mata o node no Rust + para o poll + recarrega os badges do que já rodou.
+  async function cancelAbsorb() {
+    try { await invoke("absorb_cancel"); } catch { /* */ }
+    if (pollRef.current) clearInterval(pollRef.current);
+    setAbsBusy(false); reloadRec();
   }
 
   // carrega estado (rec + cursor); migra formato antigo {seen:[]} -> rec.
@@ -231,8 +240,18 @@ ${rows.join("\n")}
   const saveState = async (r: Record<string, Rec>, cur: string) =>
     writeText(STATE, JSON.stringify({ cursor: cur, items: r }, null, 0));
 
+  // Cancela o "puxar salvos" em andamento (o Rust devolve o parcial + cursor).
+  async function cancelPull() {
+    setCanceling(true);
+    try { await invoke("ig_saved_cancel"); } catch { /* */ }
+  }
+
   async function pull(restart = false) {
-    setLoading(true); setErr(""); setMsg(""); setProg(null);
+    setLoading(true); setErr(""); setMsg(""); setProg(null); setCanceling(false);
+    // continuar os "geral" acumula (append); qualquer puxada FRESH (coleção/restart/1ª) LIMPA a lista
+    // anterior da tela — senão vira lixo e pesa o render.
+    const continuingAll = mode === "all" && !restart && !!cursor;
+    if (!continuingAll) { setItems([]); setSel(new Set()); }
     try {
       if (mode === "collection") {
         if (!colId) { setErr(t("saved.pickCol")); return; }
@@ -255,7 +274,7 @@ ${rows.join("\n")}
     } catch (e) {
       setErr(String(e));
     } finally {
-      setLoading(false); setProg(null);
+      setLoading(false); setProg(null); setCanceling(false);
     }
   }
 
@@ -303,24 +322,31 @@ ${rows.join("\n")}
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.mode")}</span>
-            <Select ariaLabel={t("saved.mode")} value={mode} onChange={(v) => setMode(v as Mode)}
+            <Select ariaLabel={t("saved.mode")} value={mode} onChange={(v) => setMode(v as Mode)} disabled={loading || absBusy}
               options={[{ value: "all", label: t("saved.mAll") }, { value: "collection", label: t("saved.mCollection") }]} />
           </div>
 
           {mode === "collection" && (
             <div className="min-w-[200px]">
               <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.collection")}</span>
-              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId}
+              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId} disabled={loading || absBusy}
                 options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })) : [{ value: "", label: t("saved.noCols") }]} />
             </div>
           )}
 
-          <button onClick={() => pull(false)} disabled={loading}
+          <button onClick={() => pull(false)} disabled={loading || absBusy}
             className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
             {loading ? t("saved.pulling") : continuing ? t("saved.continue") : t("saved.pull")}
           </button>
 
-          {continuing && !loading && (
+          {loading && (
+            <button onClick={cancelPull} disabled={canceling}
+              className="rounded-xl border border-[var(--color-coral2)]/50 bg-[#1a0e0c] px-3.5 py-2.5 text-[12.5px] font-bold text-[var(--color-coral2)] hover:brightness-110 disabled:opacity-50">
+              {canceling ? t("saved.canceling") : t("saved.cancel")}
+            </button>
+          )}
+
+          {continuing && !loading && !absBusy && (
             <button onClick={() => pull(true)}
               className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2.5 text-[12.5px] font-bold text-[var(--color-slate)]">
               {t("saved.restart")}
@@ -362,16 +388,22 @@ ${rows.join("\n")}
             <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-slate)]">{t("saved.absIntro")}</p>
           </div>
           <div className="flex shrink-0 gap-2">
-            {sel.size > 0 && (
-              <button onClick={() => absorb([...sel])} disabled={absBusy}
+            {sel.size > 0 && !absBusy && (
+              <button onClick={() => absorb([...sel])} disabled={loading}
                 className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
                 {t("saved.absSel", { n: nf(sel.size) })}
               </button>
             )}
-            <button onClick={() => absorb()} disabled={absBusy}
+            <button onClick={() => absorb()} disabled={absBusy || loading}
               className="rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110 active:scale-[.99] disabled:opacity-50">
               {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
             </button>
+            {absBusy && (
+              <button onClick={cancelAbsorb}
+                className="rounded-xl border border-[var(--color-coral2)]/50 bg-[#1a0e0c] px-4 py-2.5 font-bold text-[var(--color-coral2)] hover:brightness-110">
+                {t("saved.cancel")}
+              </button>
+            )}
           </div>
         </div>
 
@@ -379,7 +411,7 @@ ${rows.join("\n")}
         <div className="mt-4 border-t border-[var(--color-line)] pt-4">
           <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.destLabel")}</div>
           <div className="flex flex-wrap items-end gap-3">
-            <Select ariaLabel={t("saved.destLabel")} value={destMode} onChange={(v) => setDestMode(v as typeof destMode)}
+            <Select ariaLabel={t("saved.destLabel")} value={destMode} onChange={(v) => setDestMode(v as typeof destMode)} disabled={absBusy || loading}
               options={[
                 { value: "auto", label: t("saved.destAuto") },
                 { value: "existing", label: t("saved.destExisting") },
@@ -388,13 +420,13 @@ ${rows.join("\n")}
               ]} />
             {destMode === "existing" && (
               <div className="min-w-[220px]">
-                <Select ariaLabel={t("saved.destPick")} value={destVault} onChange={setDestVault}
+                <Select ariaLabel={t("saved.destPick")} value={destVault} onChange={setDestVault} disabled={absBusy || loading}
                   options={vaults.length ? vaults.map((v) => ({ value: v, label: v })) : [{ value: "", label: t("saved.destNoVaults") }]} />
               </div>
             )}
             {destMode === "new" && (
-              <input value={newVault} onChange={(e) => setNewVault(e.target.value)} placeholder={t("saved.destNewPh")}
-                className="min-w-[220px] rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
+              <input value={newVault} onChange={(e) => setNewVault(e.target.value)} placeholder={t("saved.destNewPh")} disabled={absBusy || loading}
+                className="min-w-[220px] rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)] disabled:opacity-40" />
             )}
             {destMode === "collection" && (
               <span className="rounded-full border border-[var(--color-steel)] px-3 py-1.5 text-[12px] text-[var(--color-paper)]">{collName() || "—"}</span>
@@ -469,7 +501,7 @@ ${rows.join("\n")}
               const absorbed = !!(rr && (rr.detalhe || (rr as any).receita));
               return (
                 <div key={it.code + i} className={"flex items-center gap-3 rounded-xl border bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] " + (sel.has(it.code) ? "border-[var(--color-teal)]" : "border-[var(--color-line)]")}>
-                  <input type="checkbox" title={t("saved.selHint")} checked={sel.has(it.code)} disabled={absorbed || !qz?.pro}
+                  <input type="checkbox" title={t("saved.selHint")} checked={sel.has(it.code)} disabled={absorbed || !qz?.pro || loading || absBusy}
                     onChange={() => toggleSel(it.code)}
                     className="h-4 w-4 shrink-0 accent-[var(--color-teal)] disabled:opacity-30" />
                   {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
