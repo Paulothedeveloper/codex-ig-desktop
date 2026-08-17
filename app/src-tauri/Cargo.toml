@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.6.0"
+version = "0.6.1"
 description = "Codex IG Desktop — growth suite para Instagram (local-first)"
 authors = ["Paulo Batista (Paulocodex) <contato@paulocodex.com>"]
 license = "MIT"
@@ -24,6 +24,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 tauri-plugin-sql = { version = "2.4.0", features = ["sqlite"] }
 reqwest = { version = "0.13.4", features = ["json"] }
 tokio = { version = "1.52.3", features = ["time"] }

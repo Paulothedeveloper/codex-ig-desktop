@@ -20,8 +20,9 @@ type SavedResult = { items: SavedItem[]; next: string; throttled: boolean };
 type Collection = { id: string; name: string; count: number };
 type Mode = "all" | "collection";
 
-// status por item: "queued" = na fila (aguardando virar nota) · "done" = já virou nota no vault
-type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string };
+// status por item: "queued" = na fila · "done"/detalhe = já virou nota detalhada no vault
+type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string; detalhe?: boolean; vault?: string };
+type Quartzo = { installed: boolean; pro: boolean; kind: string };
 
 // Caixa de entrada única do 2º cérebro (fora do repo — é conhecimento, vai no Drive).
 const INBOX = "G:/Meu Drive/VAULTS/_INBOX-SALVOS";
@@ -87,18 +88,26 @@ export default function Saved() {
   const [disp, setDisp] = useState(0);
   const [absBusy, setAbsBusy] = useState(false);
   const [abs, setAbs] = useState<{ ok: number; skip: number; fail: number; dup: number; finished: boolean; tail: string[] } | null>(null);
+  const [qz, setQz] = useState<Quartzo | null>(null); // gate: Quartzo obrigatório
+  const [sel, setSel] = useState<Set<string>>(new Set()); // posts selecionados p/ absorver
+
+  useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
+
+  const toggleSel = (code: string) => setSel((s) => { const n = new Set(s); n.has(code) ? n.delete(code) : n.add(code); return n; });
 
   // dispara o motor de absorção (node) e acompanha o progresso pelo log.
-  async function absorb() {
+  // codes = só os selecionados; senão os últimos 100.
+  async function absorb(codes?: string[]) {
+    if (!qz?.pro) { setErr(t("saved.qzNeed")); return; }
     setAbsBusy(true); setAbs(null); setErr("");
     try {
-      await invoke("absorb_run", { limit: 100 });
-    } catch (e) { setErr(String(e)); setAbsBusy(false); return; }
+      await invoke("absorb_run", codes && codes.length ? { codes } : { limit: 100 });
+    } catch (e) { setErr(String(e) === "QUARTZO_REQUIRED" ? t("saved.qzNeed") : String(e)); setAbsBusy(false); return; }
     const poll = setInterval(async () => {
       try {
         const s = await invoke<typeof abs>("absorb_status");
         setAbs(s);
-        if (s?.finished) { clearInterval(poll); setAbsBusy(false); }
+        if (s?.finished) { clearInterval(poll); setAbsBusy(false); reloadRec(); }
       } catch { /* segue */ }
     }, 4000);
   }
@@ -234,11 +243,24 @@ ${rows.join("\n")}
   const continuing = mode === "all" && !!cursor;
   const pct = prog && prog.total > 0 ? Math.min(100, Math.round((prog.count / prog.total) * 100)) : 0;
 
+  // recarrega o estado (rec) — pós-absorção os badges viram "✓ no vault".
+  async function reloadRec() {
+    const raw = await readText(STATE);
+    if (!raw) return;
+    try { const s = JSON.parse(raw); if (s.items) setRec(s.items); } catch { /* */ }
+  }
+
+  const vaultShort = (v?: string) => (v === "WINDOWS - DAVINCI RESOLVE" ? "DaVinci" : v === "ESTUDOS - CONCURSO" ? "Concurso" : v === "IDEIAS SALVAS" ? "Ideias" : v || "");
+  // infere o vault pelo nome da nota (itens do motor antigo tinham n mas não vault)
+  const inferVault = (r?: Rec) => r?.vault || (/^99[a-z]/.test(r?.n || "") ? "WINDOWS - DAVINCI RESOLVE" : /concurso|estudo/i.test(r?.n || "") ? "ESTUDOS - CONCURSO" : /\bIA\b|ideia/i.test(r?.n || "") ? "IDEIAS SALVAS" : "");
+  const isAbsorbed = (r?: Rec) => !!(r && (r.detalhe || (r as any).receita) && r.n && r.n !== "(skip)" && r.n !== "(sem mídia)" && r.n !== "(sem vídeo/foto)" && r.n !== "(foto/sem-vídeo)");
+
   // badge de status de um item na lista
   const badge = (code: string) => {
     const r = rec[code];
+    if (isAbsorbed(r)) { const v = inferVault(r); return { label: v ? `✓ ${vaultShort(v)}` : t("saved.bDone"), cls: "border-[#3ad07a]/50 text-[#3ad07a]" }; }
+    if (r && (r.detalhe || (r as any).receita)) return { label: t("saved.bSkip"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" }; // skip/sem mídia
     if (!r) return { label: t("saved.bNew"), cls: "border-[var(--color-teal)] text-[var(--color-teal2)]" };
-    if (r.s === "done") return { label: t("saved.bDone"), cls: "border-[#3ad07a]/50 text-[#3ad07a]" };
     return { label: t("saved.bQueued"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" };
   };
 
@@ -287,17 +309,39 @@ ${rows.join("\n")}
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.note")}</p>
       </div>
 
-      {/* Absorver: vira os salvos em RECEITA no vault, automático (visão IA) */}
-      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+      {/* GATE: Quartzo (comprado+instalado) é obrigatório pra essa feature */}
+      {qz && !qz.pro && (
+        <div className="rounded-2xl border border-[#7c3aed]/40 bg-[linear-gradient(135deg,#160f2b,#0e1522)] p-5">
+          <div className="text-[13.5px] font-bold text-[#c4b5fd]">{t("saved.qzTitle")}</div>
+          <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-slate)]">
+            {qz.installed ? t("saved.qzInstalledNoPro") : t("saved.qzNotInstalled")}
+          </p>
+          <a href="https://quartzo.app" target="_blank" rel="noreferrer"
+            className="mt-3 inline-block rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110">
+            {t("saved.qzBtn")}
+          </a>
+        </div>
+      )}
+
+      {/* Absorver: vira os salvos em RECEITA no vault, automático (visão IA) — só com Quartzo Pro */}
+      <div className={"rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 " + (qz && !qz.pro ? "pointer-events-none opacity-50" : "")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[13.5px] font-bold text-[var(--color-paper)]">{t("saved.absTitle")}</div>
             <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-slate)]">{t("saved.absIntro")}</p>
           </div>
-          <button onClick={absorb} disabled={absBusy}
-            className="shrink-0 rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110 active:scale-[.99] disabled:opacity-50">
-            {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {sel.size > 0 && (
+              <button onClick={() => absorb([...sel])} disabled={absBusy}
+                className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
+                {t("saved.absSel", { n: nf(sel.size) })}
+              </button>
+            )}
+            <button onClick={() => absorb()} disabled={absBusy}
+              className="rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110 active:scale-[.99] disabled:opacity-50">
+              {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
+            </button>
+          </div>
         </div>
         {abs && (
           <div className="mt-4">
@@ -348,8 +392,13 @@ ${rows.join("\n")}
           <div className="stagger space-y-2">
             {items.map((it, i) => {
               const b = badge(it.code);
+              const rr = rec[it.code];
+              const absorbed = !!(rr && (rr.detalhe || (rr as any).receita));
               return (
-                <div key={it.code + i} className="flex gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)]">
+                <div key={it.code + i} className={"flex items-center gap-3 rounded-xl border bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] " + (sel.has(it.code) ? "border-[var(--color-teal)]" : "border-[var(--color-line)]")}>
+                  <input type="checkbox" title={t("saved.selHint")} checked={sel.has(it.code)} disabled={absorbed || !qz?.pro}
+                    onChange={() => toggleSel(it.code)}
+                    className="h-4 w-4 shrink-0 accent-[var(--color-teal)] disabled:opacity-30" />
                   {it.thumb ? <img src={it.thumb} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : <div className="h-16 w-16 shrink-0 rounded-lg bg-[#0e1522]" />}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
