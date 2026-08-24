@@ -154,7 +154,7 @@ async fn ai_chat(system: String, user: String, key: String, json: Option<bool>) 
         return Err("sem chave de IA (cole a chave Groq em Config)".into());
     }
     let mut body = serde_json::json!({
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "temperature": 0,
         "messages": [
             {"role": "system", "content": system},
