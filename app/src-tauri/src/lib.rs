@@ -69,11 +69,29 @@ fn resolve_key(config: &str, file: &str) -> String {
 /// Precisao: le o artigo/post de verdade pra IA analisar a fundo.
 #[tauri::command]
 async fn fetch_page(url: String) -> Result<String, String> {
-    if !url.starts_with("http") {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "url invalida".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
         return Err("url invalida".into());
+    }
+    // Anti-SSRF: so host publico. Bloqueia localhost/IP privado/link-local pra pagina
+    // maliciosa nos resultados nao sondar a rede local do usuario.
+    // ponytail: cobre host literal; DNS-rebind fica fora (Policy::none abaixo corta redirect->interno).
+    let host = parsed.host_str().ok_or("url invalida")?.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || host.ends_with(".internal") {
+        return Err("host nao permitido".into());
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        let blocked = match ip {
+            std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified(),
+            std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
+        };
+        if blocked {
+            return Err("host nao permitido".into());
+        }
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
     let html = client
