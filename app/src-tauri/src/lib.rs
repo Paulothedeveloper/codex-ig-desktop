@@ -65,6 +65,69 @@ fn resolve_key(config: &str, file: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Busca o conteudo INTEIRO de uma pagina (nao so o snippet) e devolve texto legivel.
+/// Precisao: le o artigo/post de verdade pra IA analisar a fundo.
+#[tauri::command]
+async fn fetch_page(url: String) -> Result<String, String> {
+    if !url.starts_with("http") {
+        return Err("url invalida".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let html = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .send()
+        .await
+        .map_err(|e| format!("fetch falhou: {e}"))?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(strip_html(&html, 8000))
+}
+
+/// HTML -> texto legivel (sem crate de regex): tira script/style + todas as tags, colapsa espaco.
+fn strip_html(html: &str, max: usize) -> String {
+    let low = html.to_lowercase();
+    // remove blocos script/style pelo texto original usando os indices do lowercase
+    let mut cleaned = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    let drop_block = |tag: &str, from: usize| -> Option<usize> {
+        let open = format!("<{tag}");
+        if low[from..].starts_with(&open) {
+            if let Some(end) = low[from..].find(&format!("</{tag}>")) {
+                return Some(from + end + tag.len() + 3);
+            }
+            return Some(html.len());
+        }
+        None
+    };
+    while i < html.len() {
+        if let Some(j) = drop_block("script", i).or_else(|| drop_block("style", i)).or_else(|| drop_block("noscript", i)) {
+            i = j;
+            continue;
+        }
+        if bytes[i] == b'<' {
+            if let Some(end) = html[i..].find('>') {
+                i += end + 1;
+                cleaned.push(' ');
+                continue;
+            }
+        }
+        cleaned.push(html[i..].chars().next().unwrap_or(' '));
+        i += html[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+    }
+    // decodifica entidades comuns + colapsa espaco
+    let t = cleaned
+        .replace("&nbsp;", " ").replace("&amp;", "&").replace("&quot;", "\"")
+        .replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">");
+    let collapsed: String = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed.chars().take(max).collect()
+}
+
 /// IA (Groq, OpenAI-compat) — sentimento (JSON) + resumo de inteligencia. Key Config ou GROQ API.txt.
 #[tauri::command]
 async fn ai_chat(system: String, user: String, key: String, json: Option<bool>) -> Result<String, String> {
@@ -122,6 +185,7 @@ async fn web_search(
     num: Option<u32>,
     site: Option<String>,
     tbs: Option<String>,
+    page: Option<u32>,
 ) -> Result<Vec<SearchHit>, String> {
     let key = resolve_key(&key, "SERPER.txt");
     if key.is_empty() {
@@ -146,6 +210,9 @@ async fn web_search(
     // tbs = filtro/ordem do Google (qdr:d/w/m/y = periodo; sbd:1 = ordenar por data)
     if let Some(t) = tbs.as_deref().filter(|s| !s.is_empty()) {
         body["tbs"] = serde_json::Value::String(t.to_string());
+    }
+    if let Some(p) = page.filter(|p| *p > 1) {
+        body["page"] = serde_json::json!(p);
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
@@ -568,6 +635,7 @@ pub fn run() {
             read_bytes,
             web_search,
             ai_chat,
+            fetch_page,
             focus_ig
         ])
         .run(tauri::generate_context!())
