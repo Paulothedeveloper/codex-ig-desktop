@@ -66,7 +66,7 @@ export default function Rival() {
   const top = prof ? [...prof.list].sort((a, b) => (b.likes + b.comments) - (a.likes + a.comments)).slice(0, 6) : [];
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-5xl">
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
         <div className="mb-3 flex items-start gap-1.5">
           <p className="text-[13px] leading-snug text-[var(--color-slate)]">{t("rival.intro")}</p>

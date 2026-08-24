@@ -6,6 +6,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
 async fn sess(app: &tauri::AppHandle) -> Result<Session, String> {
+    ensure_ig(app).await; // recria a webview se o usuário fechou a janela
     ig_api::session_from_webview(app).await
 }
 
@@ -16,7 +17,7 @@ async fn sess(app: &tauri::AppHandle) -> Result<Session, String> {
 const WV_ARGS: &str = "--disable-features=CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-gpu-shader-disk-cache";
 
 /// Abre a janela 'ig' (instagram.com) — o Paulo loga aqui; os comandos ig_* leem a sessão dela.
-fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
+fn open_ig(app: &tauri::AppHandle, visible: bool) -> tauri::Result<()> {
     let b = WebviewWindowBuilder::new(
         app,
         "ig",
@@ -24,11 +25,32 @@ fn open_ig(app: &tauri::AppHandle) -> tauri::Result<()> {
     )
     .title("Codex IG — Instagram (faça login aqui)")
     .initialization_script("window.__CODEX_IG__=true;")
+    .visible(visible)
     .inner_size(1040.0, 800.0);
     #[cfg(windows)]
     let b = b.additional_browser_args(WV_ARGS);
     b.build()?;
     Ok(())
+}
+
+/// Garante que a webview 'ig' existe (o usuário pode ter FECHADO a janela). Recria ESCONDIDA
+/// e espera a sessão salva voltar — cura "webview 'ig' nao existe" em TODAS as features.
+async fn ensure_ig(app: &tauri::AppHandle) {
+    if app.get_webview_window("ig").is_some() {
+        return;
+    }
+    if open_ig(app, false).is_err() {
+        return;
+    }
+    // espera carregar + restaurar cookies da sessão (até ~10s); se não logar, o comando reporta login
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        if let Ok(s) = ig_api::session_from_webview(app).await {
+            if !s.ds.is_empty() {
+                return;
+            }
+        }
+    }
 }
 
 /// Escreve bytes num caminho (o JS pega o caminho via diálogo nativo de salvar). Tauri não faz
@@ -298,7 +320,7 @@ async fn focus_ig(app: tauri::AppHandle) -> Result<(), String> {
         let _ = w.set_focus();
         Ok(())
     } else {
-        open_ig(&app).map_err(|e| e.to_string())
+        open_ig(&app, true).map_err(|e| e.to_string())
     }
 }
 
@@ -382,6 +404,7 @@ fn ig_capture_clear() {
 /// Testa um endpoint /api/v1 descoberto na captura (reshares/reposts) — devolve o JSON cru.
 #[tauri::command]
 async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Value, String> {
+    ensure_ig(&app).await; // Concorrente: recria a webview se foi fechada
     ig_api::raw_get(&app, &url).await
 }
 
@@ -627,7 +650,7 @@ pub fn run() {
         .setup(|app| {
             ig_api::install_ig_listener(app.handle());
             ig_api::install_capture_listener(app.handle());
-            open_ig(app.handle())?;
+            open_ig(app.handle(), true)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

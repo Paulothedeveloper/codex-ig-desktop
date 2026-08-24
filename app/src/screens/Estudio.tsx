@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../i18n";
 import Help from "../Help";
 import Loading from "../Loading";
+import { Select } from "../Select";
 
 // Base do algoritmo IG 2026 (pesquisa web jan-ago/2026) — embutida no system prompt.
 // "Manter atualizado" = editar aqui + a nota do vault. Botão Atualizar puxa artigo fresco.
@@ -85,16 +86,18 @@ export default function Estudio() {
     } catch (e) { setErr(String(e)); } finally { setBusy(""); }
   }
 
-  const Sel = ({ v, set, opts, label }: { v: string; set: (x: string) => void; opts: string[]; label: string }) => (
-    <label className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{label}
-      <select value={v} onChange={(e) => set(e.target.value)} className="mt-1 block w-full rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]">
-        {opts.map((o) => <option key={o} value={o}>{t("estudio." + (label === t("estudio.goal") ? "goal_" : "fmt_") + o)}</option>)}
-      </select>
-    </label>
-  );
+  const Sel = ({ v, set, opts, label }: { v: string; set: (x: string) => void; opts: string[]; label: string }) => {
+    const pre = label === t("estudio.goal") ? "goal_" : "fmt_";
+    return (
+      <div>
+        <span className="mb-1 block text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{label}</span>
+        <Select ariaLabel={label} value={v} onChange={set} options={opts.map((o) => ({ value: o, label: t("estudio." + pre + o) }))} />
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-5xl">
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
         <div className="mb-3 flex items-start gap-1.5">
           <p className="text-[13px] leading-snug text-[var(--color-slate)]">{t("estudio.intro")}</p>

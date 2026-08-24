@@ -659,8 +659,30 @@ pub async fn profile(
         "https://www.instagram.com/api/v1/users/web_profile_info/?username={}",
         urlencode(username)
     );
-    let j = webview_fetch(app, &url, false, &s.csrf).await?;
-    Ok(j["data"]["user"].clone())
+    // web_profile_info sofre soft-block (400/429) quando o IG ta ritmando a conta.
+    // Retry com backoff antes de desistir — evita falso "nao encontrado".
+    let mut last = String::new();
+    for attempt in 0..3 {
+        match webview_fetch(app, &url, false, &s.csrf).await {
+            Ok(j) => {
+                let user = j["data"]["user"].clone();
+                if !user.is_null() {
+                    return Ok(user);
+                }
+                last = "empty".into();
+            }
+            Err(e) => {
+                last = e.clone();
+                if e != "BLOCK" && !e.contains("require_login") {
+                    return Err(e); // erro real (rede/parse) — nao adianta retry
+                }
+            }
+        }
+        if attempt < 2 {
+            tokio::time::sleep(Duration::from_millis(1800 + jitter_ms(1200))).await;
+        }
+    }
+    Err(if last == "BLOCK" { "BLOCK".into() } else { last })
 }
 
 /// Seguidores de um perfil (concorrente PÚBLICO), paginado + ritmado, até `cap`.
