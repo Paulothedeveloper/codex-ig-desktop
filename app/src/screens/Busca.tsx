@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+import Portal from "../Portal";
+import Help from "../Help";
 import { exportDossierPdf } from "../pdf";
 
 type Hit = { title: string; link: string; snippet: string; source: string; date: string; image: string };
@@ -403,7 +405,10 @@ export default function Busca() {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
-        <p className="mb-3 text-[13px] text-[var(--color-slate)] leading-snug">{t("busca.intro")}</p>
+        <div className="mb-3 flex items-start gap-1.5">
+          <p className="text-[13px] text-[var(--color-slate)] leading-snug">{t("busca.intro")}</p>
+          <Help label={t("busca.title")} text={t("help.busca")} />
+        </div>
         <div className="flex gap-2">
           <input
             value={q}
@@ -453,7 +458,7 @@ export default function Busca() {
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.region")}:</span>
+          <span className="mr-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.region")}: <Help label={t("busca.region")} text={t("help.region")} /></span>
           <button onClick={() => setRegion("")} className={`rounded-full border px-2.5 py-1 text-[12px] ${region === "" ? "border-[var(--color-teal)] bg-[var(--color-teal)]/15 text-[var(--color-teal2)]" : "border-[var(--color-steel)] bg-[#0e1522] text-[var(--color-slate)]"}`}>{t("busca.regionAll")}</button>
           {REGIONS.map((r) => (
             <button key={r.label} onClick={() => setRegion(r.label)} className={`rounded-full border px-2.5 py-1 text-[12px] ${region === r.label ? "border-[var(--color-teal)] bg-[var(--color-teal)]/15 text-[var(--color-teal2)]" : "border-[var(--color-steel)] bg-[#0e1522] text-[var(--color-paper)]"}`}>{r.label}</button>
@@ -475,15 +480,16 @@ export default function Busca() {
         )}
 
         {/* barra de inteligência */}
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-line)] pt-3">
-          <button onClick={crisis} disabled={!!busy || loading} className="rounded-lg bg-[linear-gradient(135deg,#ff4d3d,#ff8a5c)] px-3.5 py-2 text-[12.5px] font-bold text-[#1a0a08] disabled:opacity-40">{t("busca.crisis")}</button>
-          <button onClick={() => analyze()} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
-          <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
-          <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
-          <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
-          <button onClick={narratives} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
-          <button onClick={findVoices} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.voices")}</button>
-          <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-3">
+          <span className="mr-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-widest text-[var(--color-teal2)]">{t("busca.intelBar")} <Help label={t("busca.intelBar")} text={t("help.intel")} /></span>
+          <button onClick={crisis} title={t("help.crisis")} disabled={!!busy || loading} className="rounded-lg bg-[linear-gradient(135deg,#ff4d3d,#ff8a5c)] px-3.5 py-2 text-[12.5px] font-bold text-[#1a0a08] disabled:opacity-40">{t("busca.crisis")}</button>
+          <button onClick={() => analyze()} title={t("help.analyze")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
+          <button onClick={summarize} title={t("help.summarize")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
+          <button onClick={dossier} title={t("help.dossier")} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
+          <button onClick={() => setCmp((c) => ({ ...c, open: true }))} title={t("help.compare")} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
+          <button onClick={narratives} title={t("help.narratives")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
+          <button onClick={findVoices} title={t("help.voices")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.voices")}</button>
+          <button onClick={() => setHistOpen(true)} title={t("help.history")} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
       </div>
@@ -604,7 +610,7 @@ export default function Busca() {
 
       {/* modal: leitura profunda (IA lê a página inteira) */}
       {deep && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
+        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
           <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.readDeepTitle")}</span>
@@ -617,12 +623,12 @@ export default function Busca() {
               <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skel h-4" />)}<p className="pt-1 text-[11px] text-[var(--color-slate)]">{t("busca.reading")}</p></div>
             )}
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* modal: resposta gerada por IA */}
       {reply && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
+        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
           <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.replyTitle")}</span>
@@ -641,12 +647,12 @@ export default function Busca() {
               <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel h-4" />)}</div>
             )}
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* modal: quem curtiu/comentou o post do IG (cruzar Busca -> Posts) */}
       {inter && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
+        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
           <div className="pop flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.whoTitle")}</span>
@@ -675,7 +681,7 @@ export default function Busca() {
               </div>
             )}
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* modal: histórico / timeline */}
@@ -686,7 +692,7 @@ export default function Busca() {
         const terms = Object.keys(byTerm).reverse();
         const dt = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
         return (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
+          <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
             <div className="pop flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.historyTitle")}</span>
@@ -723,13 +729,13 @@ export default function Busca() {
                 </div>
               )}
             </div>
-          </div>
+          </div></Portal>
         );
       })()}
 
       {/* modal: comparar candidatos */}
       {cmp.open && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
+        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
           <div className="pop w-full max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.compareTitle")}</span>
@@ -784,7 +790,7 @@ export default function Busca() {
               );
             })()}
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   );
