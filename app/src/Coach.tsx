@@ -14,6 +14,7 @@ const STEPS: Step[] = [
   { id: "saved", target: "nav-saved" },
   { id: "busca", target: "nav-busca" },
   { id: "estudio", target: "nav-estudio" },
+  { id: "rival", target: "nav-rival" },
   { id: "clicks", target: "nav-clicks" },
   { id: "config", target: "nav-config" },
 ];
