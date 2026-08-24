@@ -12,6 +12,7 @@ type Kind = "any" | "search" | "videos" | "images" | "news" | "places";
 type Net = "all" | "instagram" | "facebook" | "x" | "youtube" | "tiktok";
 type Period = "" | "d" | "w" | "m" | "y";
 type Sort = "rel" | "recent" | "old" | "likes" | "comments";
+type Voice = { name: string; handle: string; kind: string; mentions: number; reach: string; stance: Sent; why: string };
 
 const NET_DOMAINS: Record<Net, string[]> = {
   all: [],
@@ -82,6 +83,7 @@ export default function Busca() {
   const [sentFilter, setSentFilter] = useState<"all" | "neg" | "pos">("all");
   const [deep, setDeep] = useState<{ title: string; text: string } | null>(null);
   const [narr, setNarr] = useState<string | null>(null);
+  const [voices, setVoices] = useState<Voice[] | null>(null);
 
   const [hits, setHits] = useState<Ranked[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -131,7 +133,7 @@ export default function Busca() {
     const pg = over?.page ?? 1;
     setLoading(true);
     setErr("");
-    if (pg === 1) { setSummary(null); setNarr(null); }
+    if (pg === 1) { setSummary(null); setNarr(null); setVoices(null); }
     try {
       const withNet = (s: string) => (net === "all" ? s : `${s} ${NET_HINT[net]}`);
       const tbsParts: string[] = [];
@@ -184,6 +186,37 @@ export default function Busca() {
       const user = `Alvo: "${q}". Resultados:\n` + top.map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\n\nAgrupe nas 3-6 PRINCIPAIS narrativas/temas que estao circulando. Pra cada: titulo curto, quantos itens, tom (apoio/ataque/neutro) e 1 frase. PT-BR.`;
       const out = await invoke<string>("ai_chat", { system: "Voce e analista de narrativa de campanha (tipo war room). So com base nos resultados.", user, key: groqKey().trim(), json: false });
       setNarr(out);
+    } catch (e) { setErr(String(e)); } finally { setBusy(""); }
+  }
+
+  // ----- Vozes: IA descobre quem MOVE a conversa (perfis/veiculos/canais) -----
+  async function findVoices() {
+    if (!hits?.length) return;
+    setBusy(t("busca.voicesFinding"));
+    setErr("");
+    try {
+      const top = hits.slice(0, 30);
+      const user =
+        `Alvo: "${q}". Resultados (titulo | fonte | link | trecho):\n` +
+        top.map((h, i) => `[${i}] ${h.title} | ${h.source} | ${h.link} | ${h.snippet}`).join("\n") +
+        `\n\nIdentifique as VOZES que MOVEM esta conversa: perfis (@ do Instagram/X/TikTok), veiculos de noticia, canais do YouTube, autores. ` +
+        `Ordene pelas mais influentes/recorrentes. Responda SO JSON: {"vozes":[{"nome":"","handle":"@ ou dominio","tipo":"perfil|veiculo|canal|autor","mencoes":1,"alcance":"alto|medio|nano/local","stance":"apoio|ataque|neutro","porque":"1 frase curta"}]}`;
+      const sys = "Voce e analista de social listening de campanha (tipo Brandwatch/Meltwater). Mapeie os influenciadores/veiculos que dirigem a conversa, SO com base nos resultados. Nao invente contas que nao aparecem.";
+      const raw = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: true });
+      const data = JSON.parse(raw);
+      const list: Voice[] = (data.vozes || []).map((v: any) => {
+        const st = String(v.stance || "").toLowerCase();
+        return {
+          name: String(v.nome || v.handle || "?"),
+          handle: String(v.handle || ""),
+          kind: String(v.tipo || ""),
+          mentions: Number(v.mencoes) || 0,
+          reach: String(v.alcance || ""),
+          stance: st.startsWith("apoi") || st.startsWith("pos") ? "pos" : st.startsWith("ataq") || st.startsWith("neg") ? "neg" : "neu",
+          why: String(v.porque || ""),
+        };
+      });
+      setVoices(list);
     } catch (e) { setErr(String(e)); } finally { setBusy(""); }
   }
 
@@ -424,6 +457,7 @@ export default function Busca() {
           <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
           <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
           <button onClick={narratives} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
+          <button onClick={findVoices} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.voices")}</button>
           <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
@@ -507,6 +541,39 @@ export default function Busca() {
             <button onClick={() => setNarr(null)} className="text-[12px] text-[var(--color-slate)]">×</button>
           </div>
           <p className="selectable whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-ink)]">{narr}</p>
+        </div>
+      )}
+
+      {/* painel: vozes / micro-influencers (IA) */}
+      {voices && (
+        <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[13px] font-bold text-[var(--color-teal2)]">{t("busca.voicesTitle")}</span>
+            <button onClick={() => setVoices(null)} className="text-[12px] text-[var(--color-slate)]">×</button>
+          </div>
+          {voices.length === 0 ? (
+            <p className="text-[13px] text-[var(--color-slate)]">{t("busca.voicesEmpty")}</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {voices.map((v, i) => {
+                const sc = v.stance === "pos" ? "var(--color-teal2)" : v.stance === "neg" ? "var(--color-coral2)" : "var(--color-slate)";
+                const sl = v.stance === "pos" ? t("busca.stanceSupport") : v.stance === "neg" ? t("busca.stanceAttack") : t("busca.stanceNeutral");
+                return (
+                  <div key={i} className="rounded-xl border border-[var(--color-line)] bg-[#0e1522] px-3.5 py-2.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[13.5px] font-bold text-[var(--color-paper)]">{v.name}</span>
+                      {v.handle && <span className="text-[12px] text-[var(--color-slate)]">{v.handle}</span>}
+                      {v.kind && <span className="rounded border border-[var(--color-steel)] px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide text-[var(--color-slate)]">{v.kind}</span>}
+                      {v.reach && <span className="rounded border border-[var(--color-steel)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-slate)]">{v.reach}</span>}
+                      <span className="rounded px-1.5 py-0.5 text-[10.5px] font-bold" style={{ color: sc, borderColor: sc, borderWidth: 1 }}>{sl}</span>
+                      {v.mentions > 0 && <span className="ml-auto text-[11px] text-[var(--color-slate)]">{v.mentions}×</span>}
+                    </div>
+                    {v.why && <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-ink)]">{v.why}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
