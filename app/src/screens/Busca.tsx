@@ -740,8 +740,32 @@ export default function Busca() {
               <input value={cmp.input} onChange={(e) => setCmp((c) => ({ ...c, input: e.target.value }))} placeholder="Fúria, Marcos Rogério, Hildo" className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
               <button onClick={compare} disabled={!!cmp.busy} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40">{cmp.busy || t("busca.compareGo")}</button>
             </div>
-            {cmp.rows && (
-              <div className="mt-4 overflow-auto">
+            {cmp.rows && (() => {
+              const totalVol = cmp.rows.reduce((s, r) => s + r.total, 0) || 1;
+              const palette = ["#00e5c9", "#ff8a5c", "#7c9cff", "#ffd166"];
+              return (
+                <>
+                  <div className="mt-4 rounded-xl border border-[var(--color-line)] bg-[#0e1522] p-3.5">
+                    <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-teal2)]">{t("busca.shareTitle")}</div>
+                    <div className="flex flex-col gap-2">
+                      {cmp.rows.map((r, i) => {
+                        const share = Math.round((r.total / totalVol) * 100);
+                        return (
+                          <div key={r.term}>
+                            <div className="mb-0.5 flex items-baseline justify-between text-[12px]">
+                              <span className="font-bold text-[var(--color-paper)] pii">{r.term}</span>
+                              <span className="tabular-nums text-[var(--color-slate)]">{share}% · {r.negPct}% {t("busca.cNeg").toLowerCase()}</span>
+                            </div>
+                            <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#090d15]">
+                              <div className="h-full rounded-full" style={{ width: `${Math.max(share, 2)}%`, background: palette[i % palette.length] }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-[10.5px] leading-snug text-[var(--color-slate)]">{t("busca.shareNote")}</p>
+                  </div>
+                  <div className="mt-3 overflow-auto">
                 <table className="w-full text-[12.5px]">
                   <thead className="text-left text-[var(--color-slate)]"><tr><th className="py-1.5">{t("busca.cTerm")}</th><th>{t("busca.cVol")}</th><th>{t("busca.cNeg")}</th><th>{t("busca.cSample")}</th></tr></thead>
                   <tbody>
@@ -755,8 +779,10 @@ export default function Busca() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
