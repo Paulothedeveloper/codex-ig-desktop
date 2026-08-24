@@ -204,6 +204,7 @@ async fn web_search(
     site: Option<String>,
     tbs: Option<String>,
     page: Option<u32>,
+    location: Option<String>,
 ) -> Result<Vec<SearchHit>, String> {
     let key = resolve_key(&key, "SERPER.txt");
     if key.is_empty() {
@@ -231,6 +232,10 @@ async fn web_search(
     }
     if let Some(p) = page.filter(|p| *p > 1) {
         body["page"] = serde_json::json!(p);
+    }
+    // location = segmentacao regional (ex: "Porto Velho, State of Rondonia, Brazil")
+    if let Some(loc) = location.as_deref().filter(|s| !s.is_empty()) {
+        body["location"] = serde_json::Value::String(loc.to_string());
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
