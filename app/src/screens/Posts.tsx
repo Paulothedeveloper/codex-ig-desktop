@@ -63,6 +63,8 @@ export default function Posts() {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [classifying, setClassifying] = useState(false);
   const [clsFilter, setClsFilter] = useState("all");
+  const [vox, setVox] = useState<string | null>(null);
+  const [voxBusy, setVoxBusy] = useState(false);
   const [dLoading, setDLoading] = useState(false);
   const [dErr, setDErr] = useState("");
   const [view, setView] = useState<"likes" | "comments" | "reshares">("likes");
@@ -266,6 +268,19 @@ export default function Posts() {
     } finally {
       setClassifying(false);
     }
+  }
+
+  // Voz do eleitor: resume os comentários em temas / FAQ / pedidos / ideias de conteúdo
+  async function voiceOfVoter() {
+    if (!comments?.length) return;
+    setVoxBusy(true); setDErr("");
+    try {
+      const key = localStorage.getItem("codexig_groq") || "";
+      const top = comments.slice(0, 60);
+      const user = `Comentarios do publico no post:\n` + top.map((c) => `- ${c.text}`).join("\n") + `\n\nEm PT-BR, resuma a VOZ DO ELEITOR (so com base nos comentarios):\n1) TEMAS que mais aparecem\n2) DUVIDAS/PERGUNTAS frequentes (viram FAQ)\n3) PEDIDOS/DEMANDAS do publico\n4) 3 IDEIAS DE CONTEUDO pra responder a isso`;
+      const out = await invoke<string>("ai_chat", { system: "Voce e analista de comunidade de campanha. So com base nos comentarios dados.", user, key, json: false });
+      setVox(out);
+    } catch (e) { setDErr(String(e)); } finally { setVoxBusy(false); }
   }
 
   const dt = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString(loc, { day: "2-digit", month: "short", year: "2-digit" }) : "");
@@ -480,9 +495,19 @@ export default function Posts() {
                   {view === "comments" && comments && comments.length > 0 && (
                     <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11.5px]">
                       <button onClick={classifyComments} disabled={classifying} className="rounded-md border border-[var(--color-steel)] bg-[#0e1522] px-2.5 py-1 font-bold text-[var(--color-teal2)] disabled:opacity-50">{classifying ? t("posts.classifying") : t("posts.classify")}</button>
+                      <button onClick={voiceOfVoter} disabled={voxBusy} className="rounded-md border border-[#7c3aed]/50 bg-[#160f2b] px-2.5 py-1 font-bold text-[#c4b5fd] disabled:opacity-50">{voxBusy ? t("posts.voxRunning") : t("posts.vox")}</button>
                       {comments.some((c) => c.cls) && ["all", "apoio", "duvida", "pedido", "ataque"].map((fk) => (
                         <button key={fk} onClick={() => setClsFilter(fk)} className={"rounded-md px-2 py-1 font-bold " + (clsFilter === fk ? "bg-[var(--color-teal)] text-[#04120f]" : "bg-[#0e1522] text-[var(--color-slate)]")}>{t("posts.cls_" + fk)}</button>
                       ))}
+                    </div>
+                  )}
+                  {view === "comments" && vox && (
+                    <div className="mb-2 rounded-lg border border-[#7c3aed]/40 bg-[#0e1522] p-3">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-[#c4b5fd]">{t("posts.vox")}</span>
+                        <button onClick={() => setVox(null)} className="text-[12px] text-[var(--color-slate)]">×</button>
+                      </div>
+                      <p className="selectable whitespace-pre-wrap text-[12.5px] leading-relaxed text-[var(--color-ink)]">{vox}</p>
                     </div>
                   )}
 

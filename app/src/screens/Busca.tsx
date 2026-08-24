@@ -98,6 +98,7 @@ export default function Busca() {
   const [deep, setDeep] = useState<{ title: string; text: string } | null>(null);
   const [narr, setNarr] = useState<string | null>(null);
   const [voices, setVoices] = useState<Voice[] | null>(null);
+  const [voiceFilter, setVoiceFilter] = useState<"all" | "pos" | "neg">("all");
 
   const [hits, setHits] = useState<Ranked[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +110,8 @@ export default function Busca() {
   const [inter, setInter] = useState<{ title: string; loading: boolean; err: string; likers: IgUser[]; comments: IComment[] } | null>(null);
   const [histOpen, setHistOpen] = useState(false);
   const [cmp, setCmp] = useState<{ open: boolean; input: string; busy: string; rows: { term: string; total: number; negPct: number; sample: string }[] | null }>({ open: false, input: "", busy: "", rows: null });
+  // Estratégia: checagem de boato, dossiê do adversário, radar de temas, briefing
+  const [strat, setStrat] = useState<{ kind: "check" | "dossier" | "radar" | "briefing"; input: string; busy: boolean; out: string; rows: Ranked[] } | null>(null);
 
   function applyClient(list: Ranked[]): Ranked[] {
     let r = [...list];
@@ -326,8 +329,8 @@ export default function Busca() {
   async function genReply(h: Ranked) {
     setReply({ h, text: "" });
     try {
-      const sys = "Voce e assessor de comunicacao de campanha. Escreva uma resposta CURTA (2-3 frases), educada, por CONTEXTO e fatos, SEM atacar ninguem, pronta pra publicar. Tom institucional, PT-BR.";
-      const user = `Alvo: "${q}". Publicacao a responder (${h.source}): "${h.title}. ${h.snippet}". Escreva a resposta.`;
+      const sys = "Voce e assessor de comunicacao de campanha. Gere respostas prontas pra publicar, curtas (2-3 frases), por CONTEXTO e fatos, SEM atacar ninguem. PT-BR.";
+      const user = `Alvo: "${q}". Publicacao a responder (${h.source}): "${h.title}. ${h.snippet}".\n\nEscreva 3 VERSOES da resposta, cada uma rotulada em MAIUSCULO na primeira linha:\nINSTITUCIONAL — tom formal, nota oficial.\nDIRETO — firme, rebate o ponto com fato.\nEMPATICO — proximo, humano, acolhe a preocupacao.\nUma linha em branco entre elas.`;
       const text = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: false });
       setReply({ h, text });
     } catch (e) {
@@ -361,6 +364,64 @@ export default function Busca() {
       setErr(String(e));
       setCmp((c) => ({ ...c, busy: "" }));
     }
+  }
+
+  // ----- Estratégia (checagem / dossiê adversário / radar / briefing) -----
+  function openStrat(kind: "check" | "dossier" | "radar" | "briefing") {
+    setStrat({ kind, input: "", busy: false, out: "", rows: [] });
+  }
+  async function runStrat() {
+    if (!strat) return;
+    const k = strat.kind;
+    if ((k === "check" || k === "dossier") && !strat.input.trim()) return;
+    setStrat((s) => s && { ...s, busy: true, out: "" });
+    try {
+      const sk = serperKey().trim();
+      const search = async (query: string, tbs = ""): Promise<Ranked[]> => {
+        const hs = await invoke<Hit[]>("web_search", { query, key: sk, endpoint: "search", num: 10, tbs });
+        return hs.map((h) => ({ ...h, likes: 0, comments: 0 }));
+      };
+      let rows: Ranked[] = [];
+      let sys = "", user = "";
+      if (k === "check") {
+        rows = await search(strat.input);
+        sys = "Voce e checador de fatos imparcial. So com base nas fontes dadas, sem opiniao.";
+        user = `Alegacao a checar: "${strat.input}".\nFontes:\n` + rows.slice(0, 10).map((h, i) => `[${i}] ${h.title} — ${h.snippet} (${h.source})`).join("\n") + `\n\nResponda PT-BR, exatamente:\nVEREDITO: PROCEDE | FALSO | ENGANOSO | SEM PROVA\nPORQUE: 2-3 frases com base nas fontes\nRESPOSTA PRONTA: uma frase curta pra publicar esclarecendo`;
+      } else if (k === "dossier") {
+        const n = strat.input;
+        const [a, b, c] = await Promise.all([search(n), search(`${n} critica OR ataque OR polemica`), search(`${n} promessa OR proposta`)]);
+        rows = [...a, ...b, ...c];
+        sys = "Voce e analista de inteligencia politica. So com base nas fontes, sem inventar.";
+        user = `Alvo: "${n}". Fontes:\n` + rows.slice(0, 24).map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\n\nMonte um DOSSIE em PT-BR:\n1) QUEM E (cargo/partido se aparecer)\n2) NARRATIVAS (a favor e contra)\n3) ATAQUES / VULNERABILIDADES que ele sofre\n4) PROMESSAS / POSICOES`;
+      } else if (k === "radar") {
+        const reg = REGIONS.find((r) => r.label === region)?.term || "Rondonia";
+        rows = await search(`${reg} politica`, "qdr:d,sbd:1");
+        sys = "Voce e analista de pauta politica. So com base nas noticias dadas.";
+        user = `Regiao: "${reg}". Noticias recentes:\n` + rows.slice(0, 12).map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\n\nListe os 5-8 TEMAS MAIS QUENTES agora, do mais pro menos relevante. Pra cada: titulo curto + 1 frase + por que importa pra campanha. PT-BR.`;
+      } else {
+        const term = q.trim() || strat.input.trim();
+        if (!term) { setStrat((s) => s && { ...s, busy: false, out: t("busca.stratBriefNeed") }); return; }
+        rows = await search(term, "qdr:d,sbd:1");
+        sys = "Voce e chefe de gabinete montando o briefing matinal da campanha. So com base nos resultados.";
+        user = `Alvo: "${term}". Ultimas 24h:\n` + rows.slice(0, 15).map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\n\nMonte o BRIEFING DE HOJE em PT-BR:\n- CLIMA GERAL (1 linha)\n- NOVOS ATAQUES / RISCOS (bullets)\n- OPORTUNIDADES (bullets)\n- TOP 3 PRA RESPONDER HOJE (prioridade)`;
+      }
+      const out = await invoke<string>("ai_chat", { system: sys, user, key: groqKey().trim(), json: false });
+      setStrat((s) => s && { ...s, busy: false, out, rows });
+    } catch (e) {
+      setStrat((s) => s && { ...s, busy: false, out: String(e) });
+    }
+  }
+  function stratPdf() {
+    if (!strat?.out) return;
+    const bytes = exportDossierPdf({
+      title: strat.kind === "dossier" ? t("busca.stratDossier") + ": " + strat.input : t("busca.strat" + (strat.kind === "check" ? "Check" : strat.kind === "radar" ? "Radar" : "Brief")),
+      subtitle: new Date().toLocaleString(),
+      summary: strat.out, summaryLabel: t("busca.summaryTitle"),
+      rows: strat.rows.map((h) => ({ title: h.title, link: h.link, source: h.source, date: h.date, sent: "", snippet: h.snippet })),
+      colTitle: t("busca.dTitle"), colSource: t("busca.dSource"), colSent: t("busca.dSent"), colSnippet: t("busca.dSnippet"),
+      footer: t("posts.pdfFooter", { date: new Date().toLocaleString() }),
+    });
+    saveBytes(bytes, `codexig-${strat.kind}-${(strat.input || "campanha").replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 20)}.pdf`, "pdf", "PDF");
   }
 
   function dossier() {
@@ -496,6 +557,15 @@ export default function Busca() {
           <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
+
+        {/* barra de estratégia (geradores) */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-3">
+          <span className="mr-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-widest text-[#c4b5fd]">{t("busca.stratBar")} <Help label={t("busca.stratBar")} text={t("help.strat")} /></span>
+          <button onClick={() => openStrat("check")} className="rounded-lg border border-[#7c3aed]/50 bg-[#160f2b] px-3.5 py-2 text-[12.5px] font-bold text-[#c4b5fd]">{t("busca.stratCheck")}</button>
+          <button onClick={() => openStrat("dossier")} className="rounded-lg border border-[#7c3aed]/50 bg-[#160f2b] px-3.5 py-2 text-[12.5px] font-bold text-[#c4b5fd]">{t("busca.stratDossier")}</button>
+          <button onClick={() => openStrat("radar")} className="rounded-lg border border-[#7c3aed]/50 bg-[#160f2b] px-3.5 py-2 text-[12.5px] font-bold text-[#c4b5fd]">{t("busca.stratRadar")}</button>
+          <button onClick={() => openStrat("briefing")} className="rounded-lg border border-[#7c3aed]/50 bg-[#160f2b] px-3.5 py-2 text-[12.5px] font-bold text-[#c4b5fd]">{t("busca.stratBrief")}</button>
+        </div>
       </div>
 
       {err && <div className="rounded-xl border border-[#43221d] bg-[#1a0e0c] px-4 py-3 text-[13px] text-[var(--color-coral2)]">{err}</div>}
@@ -589,8 +659,14 @@ export default function Busca() {
           {voices.length === 0 ? (
             <p className="text-[13px] text-[var(--color-slate)]">{t("busca.voicesEmpty")}</p>
           ) : (
+            <>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {([["all", t("busca.voiceAll")], ["pos", t("busca.voiceAllies")], ["neg", t("busca.voiceAttackers")]] as const).map(([v, lbl]) => (
+                <button key={v} onClick={() => setVoiceFilter(v)} className={`rounded-full border px-2.5 py-1 text-[11.5px] font-bold ${voiceFilter === v ? "border-[var(--color-teal)] bg-[var(--color-teal)]/15 text-[var(--color-teal2)]" : "border-[var(--color-steel)] bg-[#0e1522] text-[var(--color-slate)]"}`}>{lbl} <span className="tabular-nums opacity-70">{v === "all" ? voices.length : voices.filter((x) => x.stance === v).length}</span></button>
+              ))}
+            </div>
             <div className="flex flex-col gap-2">
-              {voices.map((v, i) => {
+              {voices.filter((v) => voiceFilter === "all" || v.stance === voiceFilter).map((v, i) => {
                 const sc = v.stance === "pos" ? "var(--color-teal2)" : v.stance === "neg" ? "var(--color-coral2)" : "var(--color-slate)";
                 const sl = v.stance === "pos" ? t("busca.stanceSupport") : v.stance === "neg" ? t("busca.stanceAttack") : t("busca.stanceNeutral");
                 return (
@@ -608,6 +684,7 @@ export default function Busca() {
                 );
               })}
             </div>
+            </>
           )}
         </div>
       )}
@@ -649,6 +726,42 @@ export default function Busca() {
               </>
             ) : (
               <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel h-4" />)}</div>
+            )}
+          </div>
+        </div></Portal>
+      )}
+
+      {/* modal: estratégia (checagem / dossiê / radar / briefing) */}
+      {strat && (
+        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setStrat(null)}>
+          <div className="pop flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-[#7c3aed]/40 bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[14px] font-bold text-[#c4b5fd]">{t("busca.strat" + (strat.kind === "check" ? "Check" : strat.kind === "dossier" ? "Dossier" : strat.kind === "radar" ? "Radar" : "Brief"))}</span>
+              <button onClick={() => setStrat(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
+            </div>
+            <p className="mb-2 text-[12px] leading-snug text-[var(--color-slate)]">{t("busca.stratHint." + strat.kind)}</p>
+            {(strat.kind === "check" || strat.kind === "dossier") && (
+              <div className="mb-3 flex gap-2">
+                <input value={strat.input} onChange={(e) => setStrat((s) => s && { ...s, input: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") runStrat(); }}
+                  placeholder={t("busca.stratPh." + strat.kind)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[#a855f7]" />
+                <button onClick={runStrat} disabled={strat.busy || !strat.input.trim()} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-40">{strat.busy ? t("busca.stratRunning") : t("busca.stratGo")}</button>
+              </div>
+            )}
+            {(strat.kind === "radar" || strat.kind === "briefing") && !strat.out && !strat.busy && (
+              <button onClick={runStrat} className="mb-3 self-start rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-4 py-2 text-[12.5px] font-bold text-white">{t("busca.stratGo")}</button>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto">
+              {strat.busy ? (
+                <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-4" />)}<p className="pt-1 text-[11px] text-[var(--color-slate)]">{t("busca.stratRunning")}</p></div>
+              ) : strat.out ? (
+                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{strat.out}</p>
+              ) : null}
+            </div>
+            {strat.out && !strat.busy && (
+              <div className="mt-3 flex justify-end gap-2">
+                <button onClick={() => navigator.clipboard.writeText(strat.out)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.copyReply")}</button>
+                <button onClick={stratPdf} className="rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-3.5 py-2 text-[12px] font-bold text-white">{t("busca.stratPdf")}</button>
+              </div>
             )}
           </div>
         </div></Portal>
