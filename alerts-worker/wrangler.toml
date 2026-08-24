@@ -1,0 +1,24 @@
+name = "codex-alerts"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Roda a cada 30 min (UTC). Ajuste se quiser menos/mais frequente.
+[triggers]
+crons = ["*/30 * * * *"]
+
+# KV pra lembrar quais links já foram alertados (dedup). Troque o id pelo do SEU namespace.
+[[kv_namespaces]]
+binding = "SEEN"
+id = "COLOQUE_O_ID_DO_KV_AQUI"
+
+[vars]
+# Termos monitorados, separados por vírgula (candidato + adversários + temas).
+TERMS = "Adailton Fúria, Marcos Rogério, Hildo"
+# Pra quem manda o alerta (vírgula separa vários).
+ALERT_TO = "voce@exemplo.com"
+# Remetente. Use um e-mail de domínio verificado no Resend (ex: alertas@seudominio.com).
+# Pra testar sem domínio: onboarding@resend.dev
+ALERT_FROM = "Codex Alerts <onboarding@resend.dev>"
+
+# Segredos (NÃO ficam aqui — via `wrangler secret put`):
+#   SERPER_KEY, GROQ_KEY, RESEND_KEY, CRON_SECRET
