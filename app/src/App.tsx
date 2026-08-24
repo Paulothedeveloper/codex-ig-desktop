@@ -58,6 +58,7 @@ export default function App() {
   const [ver, setVer] = useState("");
   const [update, setUpdate] = useState<Update | null>(null);
   const [updBusy, setUpdBusy] = useState(false);
+  const [updErr, setUpdErr] = useState("");
 
   useEffect(() => { getVersion().then(setVer).catch(() => {}); }, []);
   useEffect(() => {
@@ -169,9 +170,10 @@ export default function App() {
             <div className="pop w-full max-w-sm rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
               <div className="text-[15px] font-bold text-[var(--color-teal2)]">{t("update.title")}</div>
               <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-slate)]">{t("update.body", { v: update.version })}</p>
+              {updErr && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{updErr}</div>}
               <div className="mt-4 flex justify-end gap-2">
-                <button disabled={updBusy} onClick={() => setUpdate(null)} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-slate)] disabled:opacity-40">{t("update.later")}</button>
-                <button disabled={updBusy} onClick={async () => { setUpdBusy(true); try { await runUpdate(update); } catch (e) { setUpdBusy(false); alert(String(e)); } }} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] disabled:opacity-60">{updBusy ? t("update.installing") : t("update.now")}</button>
+                <button disabled={updBusy} onClick={() => { setUpdate(null); setUpdErr(""); }} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-slate)] disabled:opacity-40">{t("update.later")}</button>
+                <button disabled={updBusy} onClick={async () => { setUpdBusy(true); setUpdErr(""); try { await runUpdate(update); } catch (e) { setUpdBusy(false); setUpdErr(String(e)); } }} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] disabled:opacity-60">{updBusy ? t("update.installing") : t("update.now")}</button>
               </div>
             </div>
           </div>

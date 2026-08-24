@@ -42,7 +42,6 @@ export default function Help({ text, label }: { text: string; label?: string }) 
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         aria-label={label || "Ajuda"}
-        title={label || "Ajuda"}
         className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-[var(--color-steel)] text-[10px] font-bold leading-none text-[var(--color-slate)] hover:border-[var(--color-teal)] hover:text-[var(--color-teal2)] align-middle"
       >
         ?
