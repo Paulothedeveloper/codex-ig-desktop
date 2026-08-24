@@ -13,6 +13,7 @@ const STEPS: Step[] = [
   { id: "posts", target: "nav-posts" },
   { id: "saved", target: "nav-saved" },
   { id: "busca", target: "nav-busca" },
+  { id: "estudio", target: "nav-estudio" },
   { id: "clicks", target: "nav-clicks" },
   { id: "config", target: "nav-config" },
 ];
