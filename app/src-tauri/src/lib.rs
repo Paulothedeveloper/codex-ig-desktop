@@ -159,6 +159,35 @@ async fn download_url(url: String, dest: String) -> Result<u64, String> {
     Ok(bytes.len() as u64)
 }
 
+/// Busca uma imagem do CDN do IG e devolve como data URL (base64). O CDN as vezes bloqueia
+/// hotlink (403 sem Referer) — por isso o preview no webview quebra; aqui vai com Referer certo.
+#[tauri::command]
+async fn fetch_media_b64(url: String) -> Result<String, String> {
+    use base64::Engine;
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "url invalida".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("url invalida".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .header("Referer", "https://www.instagram.com/")
+        .send()
+        .await
+        .map_err(|e| format!("thumb falhou: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("thumb HTTP {}", resp.status().as_u16()));
+    }
+    let ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{ct};base64,{b64}"))
+}
+
 /// HTML -> texto legivel (sem crate de regex): tira script/style + todas as tags, colapsa espaco.
 fn strip_html(html: &str, max: usize) -> String {
     let low = html.to_lowercase();
@@ -714,6 +743,7 @@ pub fn run() {
             ai_chat,
             fetch_page,
             download_url,
+            fetch_media_b64,
             focus_ig
         ])
         .run(tauri::generate_context!())
