@@ -13,6 +13,17 @@ type Net = "all" | "instagram" | "facebook" | "x" | "youtube" | "tiktok";
 type Period = "" | "d" | "w" | "m" | "y";
 type Sort = "rel" | "recent" | "old" | "likes" | "comments";
 type Voice = { name: string; handle: string; kind: string; mentions: number; reach: string; stance: Sent; why: string };
+// Segmentação regional — campanha é Rondônia. loc = string canônica do Google (Serper location); term = reforço na query.
+const REGIONS: { label: string; loc: string; term: string }[] = [
+  { label: "Rondônia", loc: "State of Rondonia, Brazil", term: "Rondônia" },
+  { label: "Porto Velho", loc: "Porto Velho, State of Rondonia, Brazil", term: "Porto Velho" },
+  { label: "Ji-Paraná", loc: "Ji-Parana, State of Rondonia, Brazil", term: "Ji-Paraná" },
+  { label: "Ariquemes", loc: "Ariquemes, State of Rondonia, Brazil", term: "Ariquemes" },
+  { label: "Vilhena", loc: "Vilhena, State of Rondonia, Brazil", term: "Vilhena" },
+  { label: "Cacoal", loc: "Cacoal, State of Rondonia, Brazil", term: "Cacoal" },
+  { label: "Rolim de Moura", loc: "Rolim de Moura, State of Rondonia, Brazil", term: "Rolim de Moura" },
+  { label: "Guajará-Mirim", loc: "Guajara-Mirim, State of Rondonia, Brazil", term: "Guajará-Mirim" },
+];
 
 const NET_DOMAINS: Record<Net, string[]> = {
   all: [],
@@ -79,6 +90,7 @@ export default function Busca() {
   const [exclude, setExclude] = useState("");
   const [onlyEng, setOnlyEng] = useState(false);
   const [wide, setWide] = useState(false);
+  const [region, setRegion] = useState("");
   const [page, setPage] = useState(1);
   const [sentFilter, setSentFilter] = useState<"all" | "neg" | "pos">("all");
   const [deep, setDeep] = useState<{ title: string; text: string } | null>(null);
@@ -110,7 +122,8 @@ export default function Busca() {
 
   // 1 termo -> Hit[] (respeita o tipo "Qualquer" = varios endpoints), na pagina pg
   async function fetchQuery(query: string, pg: number, k: string, tbs: string): Promise<Hit[]> {
-    const call = (endpoint: string, num: number) => invoke<Hit[]>("web_search", { query, key: k, endpoint, num, site: undefined, tbs, page: pg });
+    const loc = REGIONS.find((r) => r.label === region)?.loc;
+    const call = (endpoint: string, num: number) => invoke<Hit[]>("web_search", { query, key: k, endpoint, num, site: undefined, tbs, page: pg, location: loc });
     if (kind === "any") {
       const arrs = await Promise.all(["search", "news", "videos"].map((ep) => call(ep, 20).catch(() => [] as Hit[])));
       return arrs.flat();
@@ -135,7 +148,12 @@ export default function Busca() {
     setErr("");
     if (pg === 1) { setSummary(null); setNarr(null); setVoices(null); }
     try {
-      const withNet = (s: string) => (net === "all" ? s : `${s} ${NET_HINT[net]}`);
+      const rterm = REGIONS.find((r) => r.label === region)?.term;
+      const withNet = (s: string) => {
+        let out = net === "all" ? s : `${s} ${NET_HINT[net]}`;
+        if (rterm && !s.toLowerCase().includes(rterm.toLowerCase())) out = `${out} ${rterm}`;
+        return out;
+      };
       const tbsParts: string[] = [];
       if (period) tbsParts.push(`qdr:${period}`);
       if (useSort === "recent") tbsParts.push("sbd:1");
@@ -434,7 +452,14 @@ export default function Busca() {
             {t("busca.wide")}
           </label>
         </div>
-        <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("busca.region")}:</span>
+          <button onClick={() => setRegion("")} className={`rounded-full border px-2.5 py-1 text-[12px] ${region === "" ? "border-[var(--color-teal)] bg-[var(--color-teal)]/15 text-[var(--color-teal2)]" : "border-[var(--color-steel)] bg-[#0e1522] text-[var(--color-slate)]"}`}>{t("busca.regionAll")}</button>
+          {REGIONS.map((r) => (
+            <button key={r.label} onClick={() => setRegion(r.label)} className={`rounded-full border px-2.5 py-1 text-[12px] ${region === r.label ? "border-[var(--color-teal)] bg-[var(--color-teal)]/15 text-[var(--color-teal2)]" : "border-[var(--color-steel)] bg-[#0e1522] text-[var(--color-paper)]"}`}>{r.label}</button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")} · {t("busca.regionNote")}</p>
 
         {/* monitor salvo */}
         {presets.length > 0 && (
