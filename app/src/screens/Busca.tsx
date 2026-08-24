@@ -77,7 +77,11 @@ export default function Busca() {
   const [sort, setSort] = useState<Sort>("rel");
   const [exclude, setExclude] = useState("");
   const [onlyEng, setOnlyEng] = useState(false);
+  const [wide, setWide] = useState(false);
+  const [page, setPage] = useState(1);
   const [sentFilter, setSentFilter] = useState<"all" | "neg" | "pos">("all");
+  const [deep, setDeep] = useState<{ title: string; text: string } | null>(null);
+  const [narr, setNarr] = useState<string | null>(null);
 
   const [hits, setHits] = useState<Ranked[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,40 +106,85 @@ export default function Busca() {
     return r;
   }
 
-  async function run(over?: { sort?: Sort }) {
+  // 1 termo -> Hit[] (respeita o tipo "Qualquer" = varios endpoints), na pagina pg
+  async function fetchQuery(query: string, pg: number, k: string, tbs: string): Promise<Hit[]> {
+    const call = (endpoint: string, num: number) => invoke<Hit[]>("web_search", { query, key: k, endpoint, num, site: undefined, tbs, page: pg });
+    if (kind === "any") {
+      const arrs = await Promise.all(["search", "news", "videos"].map((ep) => call(ep, 20).catch(() => [] as Hit[])));
+      return arrs.flat();
+    }
+    return call(kind, 30);
+  }
+
+  // Busca ampliada: IA gera variações do termo (apelido, cargo, nome completo, hashtag)
+  async function expand(base: string): Promise<string[]> {
+    try {
+      const raw = await invoke<string>("ai_chat", { system: "Gere variacoes de busca. So JSON.", user: `Termo: "${base}". Gere 3 variacoes/sinonimos uteis pra achar MAIS mencoes (apelido, cargo/funcao, nome completo, hashtag). So JSON {"q":["...","...","..."]}`, key: groqKey().trim(), json: true });
+      const d = JSON.parse(raw);
+      return (d.q || []).filter((x: unknown) => typeof x === "string").slice(0, 3);
+    } catch { return []; }
+  }
+
+  async function run(over?: { sort?: Sort; page?: number }) {
     if (!q.trim()) return;
     const useSort = over?.sort ?? sort;
+    const pg = over?.page ?? 1;
     setLoading(true);
     setErr("");
-    setSummary(null);
+    if (pg === 1) { setSummary(null); setNarr(null); }
     try {
-      const query = net === "all" ? q : `${q} ${NET_HINT[net]}`;
+      const withNet = (s: string) => (net === "all" ? s : `${s} ${NET_HINT[net]}`);
       const tbsParts: string[] = [];
       if (period) tbsParts.push(`qdr:${period}`);
       if (useSort === "recent") tbsParts.push("sbd:1");
       const tbs = tbsParts.join(",");
       const k = serperKey().trim();
-      const call = (endpoint: string, num: number) => invoke<Hit[]>("web_search", { query, key: k, endpoint, num, site: undefined, tbs });
-      let r: Hit[];
-      if (kind === "any") {
-        // "Qualquer" = puxa de varios tipos e junta (dedup por link); os outros filtros mandam
-        const arrs = await Promise.all(["search", "news", "videos"].map((ep) => call(ep, 20).catch(() => [] as Hit[])));
-        const seen = new Set<string>();
-        r = [];
-        for (const a of arrs) for (const h of a) if (h.link && !seen.has(h.link)) { seen.add(h.link); r.push(h); }
-      } else {
-        r = await call(kind, 30);
-      }
-      const ranked: Ranked[] = r.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
-      setHits(applyClient(ranked));
-      setSentFilter("all");
-      pushHist({ term: q.trim(), ts: Date.now(), count: r.length });
+      let queries = [withNet(q)];
+      if (wide && pg === 1) { const ex = await expand(q); queries = [withNet(q), ...ex.map(withNet)]; }
+      const arrs = await Promise.all(queries.map((qq) => fetchQuery(qq, pg, k, tbs)));
+      // dedup por link (contra o que já está na tela, se paginando)
+      const seen = new Set<string>();
+      if (pg > 1 && hits) for (const h of hits) seen.add(h.link);
+      const fresh: Hit[] = [];
+      for (const a of arrs) for (const h of a) if (h.link && !seen.has(h.link)) { seen.add(h.link); fresh.push(h); }
+      const ranked: Ranked[] = fresh.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
+      const filtered = applyClient(ranked);
+      setHits(pg > 1 && hits ? [...hits, ...filtered] : filtered);
+      if (pg === 1) setSentFilter("all");
+      setPage(pg);
+      pushHist({ term: q.trim(), ts: Date.now(), count: (pg > 1 && hits ? hits.length : 0) + filtered.length });
     } catch (e) {
       setErr(String(e));
-      setHits(null);
+      if (pg === 1) setHits(null);
     } finally {
       setLoading(false);
     }
+  }
+
+  // ----- Leitura profunda: le a PAGINA inteira e a IA diz o que diz de fato -----
+  async function readDeep(h: Ranked) {
+    setDeep({ title: h.title, text: "" });
+    try {
+      const raw = await invoke<string>("fetch_page", { url: h.link });
+      const text = raw.slice(0, 6000);
+      const out = await invoke<string>("ai_chat", { system: "Voce e analista de campanha. Resuma o que o conteudo diz DE FATO sobre o alvo, em 3-5 frases, e o tom (apoio/ataque/neutro). PT-BR, sem inventar.", user: `Alvo: "${q}".\nConteudo da pagina:\n${text}`, key: groqKey().trim(), json: false });
+      setDeep({ title: h.title, text: out });
+    } catch (e) {
+      setDeep({ title: h.title, text: String(e) });
+    }
+  }
+
+  // ----- Narrativas: IA agrupa os resultados nos principais temas/narrativas -----
+  async function narratives() {
+    if (!hits?.length) return;
+    setBusy(t("busca.narrating"));
+    setErr("");
+    try {
+      const top = hits.slice(0, 24);
+      const user = `Alvo: "${q}". Resultados:\n` + top.map((h, i) => `[${i}] ${h.title} — ${h.snippet}`).join("\n") + `\n\nAgrupe nas 3-6 PRINCIPAIS narrativas/temas que estao circulando. Pra cada: titulo curto, quantos itens, tom (apoio/ataque/neutro) e 1 frase. PT-BR.`;
+      const out = await invoke<string>("ai_chat", { system: "Voce e analista de narrativa de campanha (tipo war room). So com base nos resultados.", user, key: groqKey().trim(), json: false });
+      setNarr(out);
+    } catch (e) { setErr(String(e)); } finally { setBusy(""); }
   }
 
   // ----- IA: sentimento em lote -----
@@ -347,6 +396,10 @@ export default function Busca() {
             <input type="checkbox" checked={onlyEng} onChange={(e) => setOnlyEng(e.target.checked)} className="accent-[var(--color-teal)]" />
             {t("busca.onlyEng")}
           </label>
+          <label className="flex items-center gap-2 text-[12px] text-[var(--color-slate)]" title={t("busca.wideHint")}>
+            <input type="checkbox" checked={wide} onChange={(e) => setWide(e.target.checked)} className="accent-[var(--color-teal)]" />
+            {t("busca.wide")}
+          </label>
         </div>
         <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("busca.tips")} · {t("busca.sortNote")}</p>
 
@@ -370,6 +423,7 @@ export default function Busca() {
           <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
           <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
           <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
+          <button onClick={narratives} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
           <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
@@ -431,6 +485,7 @@ export default function Busca() {
                     </div>
                   </a>
                   <div className="flex justify-end gap-3 border-t border-[var(--color-line)] px-3 py-1.5">
+                    <button onClick={() => readDeep(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.readDeep")}</button>
                     {igShortcode(h.link) ? <button onClick={() => openInteract(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.whoInteracted")}</button> : null}
                     <button onClick={() => genReply(h)} className="text-[11.5px] font-bold text-[var(--color-teal2)] hover:underline">{t("busca.reply")}</button>
                   </div>
@@ -438,6 +493,38 @@ export default function Busca() {
               ))}
             </div>
           )}
+          {shown.length > 0 && (
+            <button onClick={() => run({ page: page + 1 })} disabled={loading} className="w-full rounded-xl border border-[var(--color-steel)] bg-[#0e1522] py-2.5 text-[13px] font-bold text-[var(--color-paper)] hover:border-[var(--color-teal)] disabled:opacity-50">{loading ? t("busca.searching") : t("busca.more")}</button>
+          )}
+        </div>
+      )}
+
+      {/* painel: narrativas (IA) */}
+      {narr && (
+        <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[13px] font-bold text-[var(--color-teal2)]">{t("busca.narrTitle")}</span>
+            <button onClick={() => setNarr(null)} className="text-[12px] text-[var(--color-slate)]">×</button>
+          </div>
+          <p className="selectable whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-ink)]">{narr}</p>
+        </div>
+      )}
+
+      {/* modal: leitura profunda (IA lê a página inteira) */}
+      {deep && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
+          <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.readDeepTitle")}</span>
+              <button onClick={() => setDeep(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
+            </div>
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{deep.title}</div>
+            {deep.text ? (
+              <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{deep.text}</p>
+            ) : (
+              <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skel h-4" />)}<p className="pt-1 text-[11px] text-[var(--color-slate)]">{t("busca.reading")}</p></div>
+            )}
+          </div>
         </div>
       )}
 
