@@ -7,6 +7,7 @@ import Saved from "./screens/Saved";
 import Busca from "./screens/Busca";
 import Estudio from "./screens/Estudio";
 import Rival from "./screens/Rival";
+import Baixar from "./screens/Baixar";
 import Cliques from "./screens/Cliques";
 import Config from "./screens/Config";
 import { Logo } from "./Logo";
@@ -30,6 +31,7 @@ const ICON: Record<string, string> = {
   busca: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   estudio: '<path d="M12 2l2.4 6.9H22l-6 4.5 2.3 7L12 16.9 5.7 20.4 8 13.4l-6-4.5h7.6z"/>',
   rival: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  baixar: '<path d="M12 3v11m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
   clicks:
     '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
   config:
@@ -52,8 +54,8 @@ function Ic({ n, s = 20 }: { n: string; s?: number }) {
   );
 }
 
-type TabId = "instagram" | "report" | "posts" | "saved" | "busca" | "estudio" | "rival" | "clicks" | "config";
-const TAB_IDS: TabId[] = ["instagram", "report", "posts", "saved", "busca", "estudio", "rival", "clicks", "config"];
+type TabId = "instagram" | "report" | "posts" | "saved" | "busca" | "estudio" | "rival" | "baixar" | "clicks" | "config";
+const TAB_IDS: TabId[] = ["instagram", "report", "posts", "saved", "busca", "estudio", "rival", "baixar", "clicks", "config"];
 
 export default function App() {
   const { t, needsChoice } = useI18n();
@@ -105,7 +107,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 p-2.5 space-y-1">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2.5">
           {tabs.map((tb) => {
             const on = tb.id === tab;
             return (
@@ -163,6 +165,7 @@ export default function App() {
           <div className={tab === "busca" ? "screen-in" : "hidden"}><Busca /></div>
           <div className={tab === "estudio" ? "screen-in" : "hidden"}><Estudio /></div>
           <div className={tab === "rival" ? "screen-in" : "hidden"}><Rival /></div>
+          <div className={tab === "baixar" ? "screen-in" : "hidden"}><Baixar /></div>
           <div className={tab === "clicks" ? "screen-in" : "hidden"}><Cliques /></div>
           <div className={tab === "config" ? "screen-in" : "hidden"}><Config /></div>
         </div>
