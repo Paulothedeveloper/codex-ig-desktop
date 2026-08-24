@@ -85,6 +85,7 @@ export default function Saved() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [rec, setRec] = useState<Record<string, Rec>>({}); // status por code
+  const [fila, setFila] = useState<{ code: string; caption: string; thumb: string; is_video: boolean }[] | null>(null); // fila do vault, in-app
   const [cursor, setCursor] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
   const [disp, setDisp] = useState(0);
@@ -217,6 +218,22 @@ tags: [inbox, salvos, segundo-cerebro]
 ${rows.join("\n")}
 `;
     await writeText(FILA_MD, md);
+  }
+
+  // lê a fila crua (.jsonl) pra mostrar a lista NO APP
+  async function loadFila() {
+    const raw = (await readText(QUEUE)) || "";
+    const rows = raw.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    setFila(rows.map((r: any) => ({ code: r.code, caption: r.caption || "", thumb: r.thumb || "", is_video: !!r.is_video })));
+  }
+  // remove um item da fila (reescreve o .jsonl + _FILA.md, tira o rec)
+  async function removeFromFila(code: string) {
+    const raw = (await readText(QUEUE)) || "";
+    const kept = raw.split("\n").filter((l) => { const t = l.trim(); if (!t) return false; try { return JSON.parse(t).code !== code; } catch { return false; } });
+    await writeText(QUEUE, kept.join("\n") + (kept.length ? "\n" : ""));
+    setRec((prev) => { const n = { ...prev }; delete n[code]; return n; });
+    setFila((prev) => (prev ? prev.filter((x) => x.code !== code) : prev));
+    await writeFilaMd(doneCount);
   }
 
   // enfileira só os NOVOS (dedup por rec); atualiza .jsonl + _FILA.md + estado.
@@ -376,7 +393,25 @@ ${rows.join("\n")}
           <div className="mt-4 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-[12.5px]">
             <span className="text-[var(--color-slate)]">{t("saved.statQueued")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(queuedCount)}</b></span>
             <span className="text-[var(--color-slate)]">{t("saved.statDone")}: <b className="text-[#3ad07a] tabular-nums">{nf(doneCount)}</b></span>
-            <span className="text-[var(--color-slate)]">{t("saved.filaHint")}</span>
+            {queuedCount > 0 && <button onClick={() => { if (fila) setFila(null); else loadFila(); }} className="rounded-md border border-[var(--color-steel)] bg-[#0e1522] px-2.5 py-1 text-[12px] font-bold text-[var(--color-teal2)]">{fila ? t("saved.hideFila") : t("saved.seeFila")}</button>}
+          </div>
+        )}
+
+        {/* lista da fila IN-APP (ver + remover) */}
+        {fila && (
+          <div className="pop mt-3 rounded-xl border border-[var(--color-line)] bg-[#090d15] p-3">
+            <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.filaTitle")} ({fila.length})</div>
+            {fila.length === 0 ? <p className="text-[12.5px] text-[var(--color-slate)]">{t("saved.filaEmpty")}</p> : (
+              <div className="stagger max-h-72 space-y-1 overflow-auto">
+                {fila.map((x) => (
+                  <div key={x.code} className="flex items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[#0e1522] px-2.5 py-1.5">
+                    {x.thumb ? <img src={x.thumb} alt="" className="h-9 w-9 shrink-0 rounded object-cover" /> : <div className="h-9 w-9 shrink-0 rounded bg-[#0e1522]" />}
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-ink)] pii">{x.caption || (x.is_video ? t("saved.liveVideo") : t("saved.livePhoto"))}</span>
+                    <button onClick={() => removeFromFila(x.code)} title={t("saved.filaRemove")} className="shrink-0 rounded-md border border-[#43221d] bg-[#1a0e0c] px-2 py-1 text-[12px] font-bold text-[var(--color-coral2)] hover:brightness-110">{t("saved.filaRemove")}</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -446,6 +481,24 @@ ${rows.join("\n")}
                 {abs?.finished ? t("saved.absDone") : t("saved.absRunning")}
               </span>
             </div>
+            {/* progresso POR ITEM ao vivo (transcrição/criação da nota) */}
+            {absBusy && prog && (
+              <div className="mb-3 rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3">
+                <div className="flex items-center gap-3">
+                  {prog.thumb ? <img src={prog.thumb} alt="" className="h-11 w-11 shrink-0 rounded-md object-cover" /> : <div className="h-11 w-11 shrink-0 rounded-md bg-[#0e1522]" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between text-[12px]">
+                      <span className="font-bold text-[#c4b5fd]">{t("saved.liveCreating")} {disp}/{nf(prog.total)}</span>
+                      <span className="tabular-nums text-[var(--color-slate)]">{pct}%</span>
+                    </div>
+                    <p className="truncate text-[12px] text-[var(--color-slate)] pii">{prog.caption || (prog.is_video ? t("saved.liveVideo") : t("saved.livePhoto"))}</p>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#0e1522]">
+                  <div className="h-full rounded-full bg-[linear-gradient(90deg,#a855f7,#7c3aed)] transition-all duration-500" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
               <span className="text-[var(--color-slate)]">{t("saved.absOk")}: <b className="text-[#3ad07a] tabular-nums">{nf(abs?.ok || 0)}</b></span>
               <span className="text-[var(--color-slate)]">{t("saved.absSkip")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs?.skip || 0)}</b></span>

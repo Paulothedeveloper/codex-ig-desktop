@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../i18n";
 import Help from "../Help";
+import Loading from "../Loading";
 
 type RPost = { caption: string; likes: number; comments: number; views: number; isVideo: boolean };
 type Prof = { name: string; user: string; bio: string; followers: number; posts: number; verif: boolean; list: RPost[] };
@@ -57,7 +58,8 @@ export default function Rival() {
       const out = await invoke<string>("ai_chat", { system: sys, user, key, json: false });
       setReport(out);
     } catch (e) {
-      setErr(String(e));
+      const s = String(e);
+      setErr(s.includes("BLOCK") || s.includes("require_login") ? "BLOCK" : s.includes(t("rival.notFound")) ? "NOTFOUND" : s);
     } finally { setBusy(""); }
   }
 
@@ -77,9 +79,24 @@ export default function Rival() {
           <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") analyze(); }} placeholder={t("rival.ph")} className="min-w-0 flex-1 rounded-xl border border-[var(--color-line)] bg-[#090d15] px-3 py-2.5 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
           <button onClick={analyze} disabled={!!busy || !input.trim()} className="shrink-0 rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">{busy || t("rival.analyze")}</button>
         </div>
-        {err && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{err} <span className="text-[var(--color-slate)]">{t("rival.errHint")}</span></div>}
+        {err && (
+          <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2.5 text-[12.5px] text-[var(--color-coral2)]">
+            {err === "BLOCK" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[var(--color-paper)]">{t("rival.blocked")}</span>
+                <button onClick={() => invoke("focus_ig").catch(() => {})} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[12px] font-bold text-[var(--color-teal2)]">{t("rival.openIg")}</button>
+              </div>
+            ) : err === "NOTFOUND" ? (
+              <span>{t("rival.notFound")} <span className="text-[var(--color-slate)]">{t("rival.errHint")}</span></span>
+            ) : (
+              <span>{err} <span className="text-[var(--color-slate)]">{t("rival.errHint")}</span></span>
+            )}
+          </div>
+        )}
       </div>
 
+      {busy && !prof && <Loading label={busy} steps={[t("rival.step1"), t("rival.step2"), t("rival.step3")]} skeleton={4} />}
+      {busy && prof && !report && <Loading label={t("rival.analyzing")} steps={[t("rival.step2"), t("rival.step3")]} skeleton={3} />}
       {prof && (
         <div className="pop rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

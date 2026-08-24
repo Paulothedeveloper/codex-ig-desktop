@@ -155,7 +155,7 @@ export default function App() {
 
         {/* telas ficam MONTADAS (só escondidas) — trocar de aba não desmonta:
             preserva o estado carregado e mantém o loop de unfollow rodando em 2º plano. */}
-        <div className="p-7 max-w-4xl">
+        <div className="p-7 max-w-6xl">
           <div className={tab === "instagram" ? "screen-in" : "hidden"}><Instagram /></div>
           <div className={tab === "report" ? "screen-in" : "hidden"}><Relatorio /></div>
           <div className={tab === "posts" ? "screen-in" : "hidden"}><Posts /></div>
