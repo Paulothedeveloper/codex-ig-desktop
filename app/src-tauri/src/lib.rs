@@ -128,6 +128,37 @@ async fn fetch_page(url: String) -> Result<String, String> {
     Ok(strip_html(&html, 8000))
 }
 
+/// Baixa uma URL de midia (foto/video do IG, CDN publico) e grava no caminho escolhido pelo
+/// usuario (dialogo nativo). So http/https. Devolve o tamanho baixado.
+#[tauri::command]
+async fn download_url(url: String, dest: String) -> Result<u64, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "url invalida".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("url invalida".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .send()
+        .await
+        .map_err(|e| format!("download falhou: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("download falhou: HTTP {}", resp.status().as_u16()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    if let Some(dir) = std::path::Path::new(&dest).parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).ok();
+        }
+    }
+    std::fs::write(&dest, &bytes).map_err(|e| format!("gravar: {e}"))?;
+    Ok(bytes.len() as u64)
+}
+
 /// HTML -> texto legivel (sem crate de regex): tira script/style + todas as tags, colapsa espaco.
 fn strip_html(html: &str, max: usize) -> String {
     let low = html.to_lowercase();
@@ -682,6 +713,7 @@ pub fn run() {
             web_search,
             ai_chat,
             fetch_page,
+            download_url,
             focus_ig
         ])
         .run(tauri::generate_context!())
