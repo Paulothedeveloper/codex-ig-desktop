@@ -11,7 +11,11 @@ import { Logo } from "./Logo";
 import { useI18n } from "./i18n";
 import LanguageGate from "./LanguageGate";
 import Coach, { isOnboarded } from "./Coach";
-import { checkUpdate } from "./updater";
+import Portal from "./Portal";
+import Help from "./Help";
+import { checkUpdateOnBoot, runUpdate, UPDATE_EVENT, COACH_EVENT } from "./updater";
+import type { Update } from "@tauri-apps/plugin-updater";
+import { getVersion } from "@tauri-apps/api/app";
 
 /* ---- ícones SVG (zero emoji, regra do Manual) ---- */
 const ICON: Record<string, string> = {
@@ -51,6 +55,18 @@ export default function App() {
   const { t, needsChoice } = useI18n();
   const [tab, setTab] = useState<TabId>("report");
   const [coach, setCoach] = useState(false);
+  const [ver, setVer] = useState("");
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [updBusy, setUpdBusy] = useState(false);
+
+  useEffect(() => { getVersion().then(setVer).catch(() => {}); }, []);
+  useEffect(() => {
+    const onUpd = (e: Event) => setUpdate((e as CustomEvent).detail as Update);
+    const onCoach = () => { setTab("instagram"); setCoach(true); };
+    window.addEventListener(UPDATE_EVENT, onUpd);
+    window.addEventListener(COACH_EVENT, onCoach);
+    return () => { window.removeEventListener(UPDATE_EVENT, onUpd); window.removeEventListener(COACH_EVENT, onCoach); };
+  }, []);
 
   // coachmarks: dispara quando o app aparece (idioma já escolhido) e ainda não foi visto.
   // NÃO dá pra calcular no useState inicial: no 1º render needsChoice=true (gate na tela),
@@ -60,7 +76,7 @@ export default function App() {
   }, [needsChoice]);
 
   // checa update assinado no boot (silencioso se não houver)
-  useEffect(() => { if (!needsChoice) checkUpdate(t); }, [needsChoice]);
+  useEffect(() => { if (!needsChoice) checkUpdateOnBoot(); }, [needsChoice]);
 
   // 1ª abertura: escolher idioma ANTES de tudo (regra do Manual)
   if (needsChoice) return <LanguageGate />;
@@ -111,8 +127,12 @@ export default function App() {
           })}
         </nav>
 
-        <div className="p-3 text-[10.5px] text-[var(--color-slate)] border-t border-[var(--color-line)]">
-          {t("shell.footer")}
+        <div className="p-3 border-t border-[var(--color-line)] text-[10.5px] text-[var(--color-slate)]">
+          <div>{t("shell.footer")}</div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <a href="https://paulocodex.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--color-teal2)] hover:underline">Paulocodex</a>
+            {ver && <span className="text-[var(--color-slate)]">· v{ver}</span>}
+          </div>
         </div>
       </aside>
 
@@ -120,7 +140,10 @@ export default function App() {
       <main className="relative z-10 flex-1 overflow-auto">
         <header className="sticky top-0 z-10 backdrop-blur-sm bg-[var(--color-void)]/70 border-b border-[var(--color-line)] px-7 py-4">
           <div key={tab} className="enter">
-            <h1 className="text-xl font-bold tracking-tight">{active.label}</h1>
+            <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+              {active.label}
+              <Help label={active.label} text={t("help." + tab)} />
+            </h1>
             <p className="text-[13px] text-[var(--color-slate)]">{active.sub}</p>
           </div>
         </header>
@@ -139,6 +162,21 @@ export default function App() {
       </main>
 
       {coach && <Coach onStep={(id) => setTab(id as TabId)} onClose={() => setCoach(false)} />}
+
+      {update && (
+        <Portal>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+            <div className="pop w-full max-w-sm rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+              <div className="text-[15px] font-bold text-[var(--color-teal2)]">{t("update.title")}</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-slate)]">{t("update.body", { v: update.version })}</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button disabled={updBusy} onClick={() => setUpdate(null)} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-slate)] disabled:opacity-40">{t("update.later")}</button>
+                <button disabled={updBusy} onClick={async () => { setUpdBusy(true); try { await runUpdate(update); } catch (e) { setUpdBusy(false); alert(String(e)); } }} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] disabled:opacity-60">{updBusy ? t("update.installing") : t("update.now")}</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
     </div>
   );
 }

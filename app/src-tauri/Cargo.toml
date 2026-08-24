@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.6.12"
+version = "0.6.13"
 description = "Codex IG Desktop — growth suite para Instagram (local-first)"
 authors = ["Paulo Batista (Paulocodex) <contato@paulocodex.com>"]
 license = "MIT"

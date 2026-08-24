@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
+import Help from "../Help";
 import SessionError from "../SessionError";
 
 type Progress = { count: number; total: number; code: string; caption: string; thumb: string; is_video: boolean };
@@ -316,8 +317,24 @@ ${rows.join("\n")}
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
-        <p className="mb-3 text-[13px] leading-snug text-[var(--color-slate)]">{t("saved.intro")}</p>
+      {/* GATE no TOPO: a ferramenta inteira depende do Quartzo (comprar + instalar) */}
+      {qz && !qz.pro && (
+        <div className="rounded-2xl border border-[#7c3aed]/50 bg-[linear-gradient(135deg,#160f2b,#0e1522)] p-5">
+          <div className="flex items-center gap-1.5 text-[13.5px] font-bold text-[#c4b5fd]">{t("saved.qzTitle")} <Help label="Quartzo" text={t("help.quartzo")} /></div>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--color-slate)]">
+            {qz.installed ? t("saved.qzInstalledNoPro") : t("saved.qzNotInstalled")} {t("saved.qzWhy")}
+          </p>
+          <a href="https://quartzo.app" target="_blank" rel="noreferrer"
+            className="mt-3 inline-block rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110">
+            {t("saved.qzBtn")}
+          </a>
+        </div>
+      )}
+      <div className={"rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 " + (qz && !qz.pro ? "pointer-events-none opacity-50" : "")}>
+        <div className="mb-3 flex items-start gap-1.5">
+          <p className="text-[13px] leading-snug text-[var(--color-slate)]">{t("saved.intro")}</p>
+          <Help label={t("nav.saved.label")} text={t("help.saved")} />
+        </div>
 
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -365,20 +382,6 @@ ${rows.join("\n")}
 
         <p className="mt-3 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.note")}</p>
       </div>
-
-      {/* GATE: Quartzo (comprado+instalado) é obrigatório pra essa feature */}
-      {qz && !qz.pro && (
-        <div className="rounded-2xl border border-[#7c3aed]/40 bg-[linear-gradient(135deg,#160f2b,#0e1522)] p-5">
-          <div className="text-[13.5px] font-bold text-[#c4b5fd]">{t("saved.qzTitle")}</div>
-          <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-slate)]">
-            {qz.installed ? t("saved.qzInstalledNoPro") : t("saved.qzNotInstalled")}
-          </p>
-          <a href="https://quartzo.app" target="_blank" rel="noreferrer"
-            className="mt-3 inline-block rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110">
-            {t("saved.qzBtn")}
-          </a>
-        </div>
-      )}
 
       {/* Absorver: vira os salvos em RECEITA no vault, automático (visão IA) — só com Quartzo Pro */}
       <div className={"rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 " + (qz && !qz.pro ? "pointer-events-none opacity-50" : "")}>

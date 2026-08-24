@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { getVersion } from "@tauri-apps/api/app";
 import { useI18n, LANGS, type Lang } from "../i18n";
 import { useConfirm } from "../Confirm";
 import { privacyOn, setPrivacy } from "../privacy";
+import Help from "../Help";
+import { checkForUpdate, UPDATE_EVENT, COACH_EVENT } from "../updater";
 
 const WL_KEY = "codexig_whitelist";
 const SERPER_KEY = "codexig_serper";
@@ -18,6 +21,22 @@ export default function Config() {
   const [blur, setBlur] = useState(privacyOn());
   const [serper, setSerper] = useState(localStorage.getItem(SERPER_KEY) || "");
   const [groq, setGroq] = useState(localStorage.getItem(GROQ_KEY) || "");
+  const [ver, setVer] = useState("");
+  const [updMsg, setUpdMsg] = useState("");
+  const [updChecking, setUpdChecking] = useState(false);
+  useEffect(() => { getVersion().then(setVer).catch(() => {}); }, []);
+
+  async function checkUpd() {
+    setUpdChecking(true); setUpdMsg("");
+    const u = await checkForUpdate();
+    setUpdChecking(false);
+    if (u) window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail: u }));
+    else setUpdMsg(t("config.upToDate"));
+  }
+  function reopenTutorial() {
+    localStorage.setItem("codexig_onboarded", "0");
+    window.dispatchEvent(new CustomEvent(COACH_EVENT));
+  }
 
   async function check() {
     setChecking(true);
@@ -135,6 +154,26 @@ export default function Config() {
 
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 text-[13px] text-[var(--color-slate)] leading-relaxed">
         {t("config.privacyBody")}
+      </div>
+
+      {/* Sobre + versão + atualizar + tutorial */}
+      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div className="mb-3 flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("config.about")} <Help label={t("config.about")} text={t("help.about")} /></div>
+        <div className="flex items-center gap-2 text-[14px]">
+          <span className="font-bold text-[var(--color-paper)]">Codex IG</span>
+          {ver && <span className="rounded-md border border-[var(--color-steel)] px-2 py-0.5 text-[12px] tabular-nums text-[var(--color-teal2)]">v{ver}</span>}
+        </div>
+        <p className="mt-1.5 text-[13px] text-[var(--color-slate)] leading-relaxed">
+          {t("config.aboutBy")}{" "}
+          <a href="https://paulocodex.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--color-teal2)] hover:underline">paulocodex.com</a>
+          {" · "}
+          <a href="mailto:contato@paulocodex.com" className="text-[var(--color-teal2)] hover:underline">contato@paulocodex.com</a>
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button onClick={checkUpd} disabled={updChecking} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] hover:brightness-110 disabled:opacity-50">{updChecking ? t("config.checkingUpd") : t("config.checkUpd")}</button>
+          <button onClick={reopenTutorial} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-paper)]">{t("config.reopenTutorial")}</button>
+        </div>
+        {updMsg && <div className="mt-2 text-[12px] text-[var(--color-teal2)]">{updMsg}</div>}
       </div>
     </div>
   );
