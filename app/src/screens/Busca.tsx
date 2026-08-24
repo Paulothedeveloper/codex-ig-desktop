@@ -5,6 +5,7 @@ import { useI18n } from "../i18n";
 import { Select } from "../Select";
 import Portal from "../Portal";
 import Help from "../Help";
+import Loading from "../Loading";
 import { exportDossierPdf } from "../pdf";
 
 type Hit = { title: string; link: string; snippet: string; source: string; date: string; image: string };
@@ -580,7 +581,7 @@ export default function Busca() {
         </div>
       )}
 
-      {loading && <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-20" />)}</div>}
+      {loading && <Loading label={t("busca.searching")} steps={[t("busca.step1"), t("busca.step2"), t("busca.step3")]} skeleton={4} />}
 
       {!loading && hits && (
         <div className="space-y-3">

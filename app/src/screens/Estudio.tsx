@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../i18n";
 import Help from "../Help";
+import Loading from "../Loading";
 
 // Base do algoritmo IG 2026 (pesquisa web jan-ago/2026) — embutida no system prompt.
 // "Manter atualizado" = editar aqui + a nota do vault. Botão Atualizar puxa artigo fresco.
@@ -136,6 +137,7 @@ export default function Estudio() {
         {err && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{err}</div>}
       </div>
 
+      {busy && !out && <Loading label={busy} steps={mode === "analyze" ? [t("estudio.step1"), t("estudio.step2"), t("estudio.step3")] : mode === "caption" ? [t("estudio.stepC1"), t("estudio.stepC2")] : [t("estudio.stepR1"), t("estudio.stepR2"), t("estudio.stepR3")]} />}
       {out && (
         <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
           <p className="selectable whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-ink)]">{out}</p>
