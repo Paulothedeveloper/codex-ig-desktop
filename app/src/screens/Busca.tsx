@@ -171,13 +171,16 @@ export default function Busca() {
       for (const a of arrs) for (const h of a) if (h.link && !seen.has(h.link)) { seen.add(h.link); fresh.push(h); }
       const ranked: Ranked[] = fresh.map((h) => ({ ...h, likes: parseCount(h.snippet, "likes"), comments: parseCount(h.snippet, "comments") }));
       const filtered = applyClient(ranked);
-      setHits(pg > 1 && hits ? [...hits, ...filtered] : filtered);
+      const next = pg > 1 && hits ? [...hits, ...filtered] : filtered;
+      setHits(next);
       if (pg === 1) setSentFilter("all");
       setPage(pg);
       pushHist({ term: q.trim(), ts: Date.now(), count: (pg > 1 && hits ? hits.length : 0) + filtered.length });
+      return next; // devolve os hits frescos (evita ler estado stale em quem encadeia, ex. Modo Crise)
     } catch (e) {
       setErr(String(e));
       if (pg === 1) setHits(null);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -275,8 +278,9 @@ export default function Busca() {
   // ----- Modo Crise: ordena por engajamento, busca, analisa, filtra negativos -----
   async function crisis() {
     setSort("likes");
-    await run({ sort: "likes" });
-    const tagged = await analyze();
+    const fresh = await run({ sort: "likes" }); // usa o retorno, não o estado (stale)
+    if (!fresh?.length) return;
+    const tagged = await analyze(fresh);
     if (tagged) setSentFilter("neg");
   }
 
@@ -482,14 +486,14 @@ export default function Busca() {
         {/* barra de inteligência */}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-3">
           <span className="mr-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-widest text-[var(--color-teal2)]">{t("busca.intelBar")} <Help label={t("busca.intelBar")} text={t("help.intel")} /></span>
-          <button onClick={crisis} title={t("help.crisis")} disabled={!!busy || loading} className="rounded-lg bg-[linear-gradient(135deg,#ff4d3d,#ff8a5c)] px-3.5 py-2 text-[12.5px] font-bold text-[#1a0a08] disabled:opacity-40">{t("busca.crisis")}</button>
-          <button onClick={() => analyze()} title={t("help.analyze")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
-          <button onClick={summarize} title={t("help.summarize")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
-          <button onClick={dossier} title={t("help.dossier")} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
-          <button onClick={() => setCmp((c) => ({ ...c, open: true }))} title={t("help.compare")} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
-          <button onClick={narratives} title={t("help.narratives")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
-          <button onClick={findVoices} title={t("help.voices")} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.voices")}</button>
-          <button onClick={() => setHistOpen(true)} title={t("help.history")} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
+          <button onClick={crisis} disabled={loading} className="rounded-lg bg-[linear-gradient(135deg,#ff4d3d,#ff8a5c)] px-3.5 py-2 text-[12.5px] font-bold text-[#1a0a08] disabled:opacity-40">{t("busca.crisis")}</button>
+          <button onClick={() => analyze()} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.analyze")}</button>
+          <button onClick={summarize} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.summarize")}</button>
+          <button onClick={dossier} disabled={!hits?.length} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-teal2)] disabled:opacity-40">{t("busca.dossier")}</button>
+          <button onClick={() => setCmp((c) => ({ ...c, open: true }))} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.compare")}</button>
+          <button onClick={narratives} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.narratives")}</button>
+          <button onClick={findVoices} disabled={!hits?.length || !!busy} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)] disabled:opacity-40">{t("busca.voices")}</button>
+          <button onClick={() => setHistOpen(true)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12.5px] font-bold text-[var(--color-paper)]">{t("busca.history")}</button>
           {busy && <span className="self-center text-[12px] text-[var(--color-teal2)]">{busy}</span>}
         </div>
       </div>
