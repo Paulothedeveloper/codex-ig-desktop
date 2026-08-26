@@ -25,7 +25,7 @@ const S = ({ d }: { d: string }) => (
 // bordas invisiveis pra redimensionar (decorations:false)
 function Resizers() {
   const grab = (dir: any) => (e: React.MouseEvent) => { if (e.button === 0) w().startResizeDragging(dir); };
-  const edge = "absolute z-[100]";
+  const edge = "fixed z-[100]"; // fixed = sempre nas bordas da JANELA (independe de ancestral posicionado)
   return (
     <>
       <div className={edge + " left-2 right-2 top-0 h-1 cursor-ns-resize"} onMouseDown={grab("North")} />
