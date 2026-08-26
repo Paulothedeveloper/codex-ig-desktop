@@ -16,6 +16,7 @@ import LanguageGate from "./LanguageGate";
 import Coach, { isOnboarded } from "./Coach";
 import Portal from "./Portal";
 import Help from "./Help";
+import Titlebar from "./Titlebar";
 import { checkUpdateOnBoot, runUpdate, UPDATE_EVENT, COACH_EVENT } from "./updater";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
@@ -86,13 +87,15 @@ export default function App() {
   useEffect(() => { if (!needsChoice) checkUpdateOnBoot(); }, [needsChoice]);
 
   // 1ª abertura: escolher idioma ANTES de tudo (regra do Manual)
-  if (needsChoice) return <LanguageGate />;
+  if (needsChoice) return <div className="flex h-screen w-screen flex-col overflow-hidden"><Titlebar /><div className="min-h-0 flex-1"><LanguageGate /></div></div>;
 
   const tabs = TAB_IDS.map((id) => ({ id, label: t("nav." + id + ".label"), sub: t("nav." + id + ".sub") }));
   const active = tabs.find((x) => x.id === tab)!;
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden text-[var(--color-paper)]">
+    <div className="flex h-screen w-screen flex-col overflow-hidden text-[var(--color-paper)]">
+      <Titlebar />
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
       <div className="aurora" />
 
       {/* sidebar */}
@@ -170,12 +173,13 @@ export default function App() {
           <div className={tab === "config" ? "screen-in" : "hidden"}><Config /></div>
         </div>
       </main>
+      </div>
 
       {coach && <Coach onStep={(id) => setTab(id as TabId)} onClose={() => setCoach(false)} />}
 
       {update && (
         <Portal>
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div className="fixed inset-0 z-[60] ov flex items-center justify-center bg-black/70 p-4">
             <div className="pop w-full max-w-sm rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
               <div className="text-[15px] font-bold text-[var(--color-teal2)]">{t("update.title")}</div>
               <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-slate)]">{t("update.body", { v: update.version })}</p>

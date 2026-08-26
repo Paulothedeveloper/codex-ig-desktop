@@ -78,10 +78,23 @@ img, svg, canvas { -webkit-user-drag: none; user-select: none; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes shimmer { 0% { background-position: -520px 0; } 100% { background-position: 520px 0; } }
 
-.screen-in { animation: fadeRise .36s cubic-bezier(.22,.61,.36,1) both; }
-.enter { animation: fadeRise .32s cubic-bezier(.22,.61,.36,1) both; }
-.pop { animation: popIn .3s cubic-bezier(.22,.61,.36,1) both; }
+/* easing premium (ease-out-quint) — assentamento suave, sem brusquidão */
+.screen-in { animation: fadeRise .42s cubic-bezier(.16,1,.3,1) both; }
+.enter { animation: fadeRise .36s cubic-bezier(.16,1,.3,1) both; }
+.pop { animation: popIn .34s cubic-bezier(.16,1,.3,1) both; }
 .fade-img { animation: fadeIn .45s ease both; }
+
+/* backdrop de popup/modal: fade + blur (sensação premium, não corta seco) */
+.ov { animation: fadeIn .22s ease both; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+
+/* hover-lift premium em cards/itens clicáveis */
+.lift { transition: transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s ease, border-color .18s ease; will-change: transform; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 16px 34px -18px rgba(0,0,0,.75), 0 0 0 1px rgba(0,229,201,.14); }
+
+/* CTA: brilho sutil no hover (luxo, discreto) */
+.cta { transition: transform .15s ease, box-shadow .28s ease, filter .18s ease; }
+.cta:hover { box-shadow: 0 10px 30px -12px rgba(0,229,201,.5); filter: brightness(1.06); }
+.cta:active { transform: translateY(1px) scale(.99); }
 
 /* stagger: primeiros itens entram em cascata; resto entra junto (lista longa não atrasa) */
 .stagger > * { animation: fadeRise .34s cubic-bezier(.22,.61,.36,1) both; }
@@ -118,6 +131,7 @@ button, a, .tap { transition: background-color .18s ease, color .18s ease, borde
 button:active, .tap:active { transform: translateY(1px) scale(.995); }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen-in, .enter, .pop, .fade-img, .stagger > *, .skel, .aurora { animation: none !important; }
+  .screen-in, .enter, .pop, .fade-img, .ov, .stagger > *, .skel, .aurora { animation: none !important; }
+  .lift:hover { transform: none; }
   * { transition-duration: .001s !important; }
 }

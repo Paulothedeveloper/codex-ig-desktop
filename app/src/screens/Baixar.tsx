@@ -213,7 +213,7 @@ export default function Baixar() {
           ) : (
             <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
               {list.map((m, i) => (
-                <div key={m.key} className="overflow-hidden rounded-xl border border-[var(--color-line)] bg-[#0e1522]">
+                <div key={m.key} className="lift overflow-hidden rounded-xl border border-[var(--color-line)] bg-[#0e1522]">
                   <div className="relative aspect-square"><Thumb url={m.thumb} />{m.isVideo && <span className="absolute right-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{t("baixar.video")}</span>}</div>
                   <button onClick={() => downloadOne(m, i)} disabled={dl === m.key} className="w-full border-t border-[var(--color-line)] px-2 py-1.5 text-[12px] font-bold text-[var(--color-teal2)] hover:bg-white/5 disabled:opacity-50">{dl === m.key ? t("baixar.saving") : t("baixar.dl")}</button>
                 </div>
