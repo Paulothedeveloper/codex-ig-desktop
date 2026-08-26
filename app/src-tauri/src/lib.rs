@@ -464,8 +464,25 @@ fn ig_capture_clear() {
 /// Testa um endpoint /api/v1 descoberto na captura (reshares/reposts) — devolve o JSON cru.
 #[tauri::command]
 async fn ig_raw_get(app: tauri::AppHandle, url: String) -> Result<serde_json::Value, String> {
-    ensure_ig(&app).await; // Concorrente: recria a webview se foi fechada
-    ig_api::raw_get(&app, &url).await
+    ensure_ig(&app).await; // Concorrente/Baixar: recria a webview se foi fechada
+    // web_profile_info / media info tomam soft-block (400/429) transitorio do IG.
+    // Retry com backoff antes de desistir (evita falso "limite" na 1a tentativa).
+    let mut last = String::new();
+    for attempt in 0..3 {
+        match ig_api::raw_get(&app, &url).await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                last = e.clone();
+                if !e.contains("BLOCK") && !e.contains("require_login") {
+                    return Err(e); // erro real (parse/rede) — nao adianta retry
+                }
+            }
+        }
+        if attempt < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(1500 + (attempt as u64) * 1200)).await;
+        }
+    }
+    Err(last)
 }
 
 /// SALVOS: um chunk dos itens salvos (+ cursor pra continuar). `resume` = cursor do chunk anterior.
