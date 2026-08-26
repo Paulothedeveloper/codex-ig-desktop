@@ -107,8 +107,82 @@ pub async fn raw_get(app: &tauri::AppHandle, path_or_url: &str) -> Result<serde_
     } else {
         return Err("url invalida (precisa ser /api/v1/... do instagram.com)".into());
     };
-    let s = session_from_webview(app).await?;
-    webview_fetch(app, &url, false, &s.csrf).await
+    // 1) tenta DIRETO via reqwest com os cookies da sessao (deterministico, nao depende do
+    //    estado/pagina da webview) — devolve o erro REAL do IG (status + corpo). 2) fallback webview.
+    match raw_get_direct(app, &url).await {
+        Ok(v) => Ok(v),
+        Err(e) if e == LOGIN => Err(LOGIN.into()), // sem sessao: nem tenta webview
+        Err(edirect) => {
+            let s = session_from_webview(app).await?;
+            match webview_fetch(app, &url, false, &s.csrf).await {
+                Ok(v) => Ok(v),
+                // se os dois falharam, propaga o erro DIRETO (tem status+corpo do IG, mais util)
+                Err(_) => Err(edirect),
+            }
+        }
+    }
+}
+
+/// GET direto a um endpoint /api/v1 via reqwest, montando o header Cookie a partir dos cookies
+/// da webview 'ig' (inclui sessionid). Nao depende do JS/pagina da webview -> confiavel + erro real.
+pub async fn raw_get_direct(app: &tauri::AppHandle, url: &str) -> Result<serde_json::Value, String> {
+    let wv = app.get_webview_window("ig").ok_or("webview 'ig' nao existe")?;
+    let base: tauri::Url = "https://www.instagram.com/".parse().unwrap();
+    let cookies = wv.cookies_for_url(base).map_err(|e| format!("cookies(): {e}"))?;
+    let mut cookie_hdr = String::new();
+    let mut csrf = String::new();
+    let mut has_session = false;
+    for c in &cookies {
+        if !cookie_hdr.is_empty() {
+            cookie_hdr.push_str("; ");
+        }
+        cookie_hdr.push_str(c.name());
+        cookie_hdr.push('=');
+        cookie_hdr.push_str(c.value());
+        match c.name() {
+            "csrftoken" => csrf = c.value().to_string(),
+            "sessionid" => has_session = true,
+            _ => {}
+        }
+    }
+    if !has_session {
+        return Err(LOGIN.into()); // sessionid nao acessivel/deslogado -> tenta a via webview
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+        .header("Cookie", cookie_hdr)
+        .header("X-IG-App-ID", "936619743392459")
+        .header("X-CSRFToken", csrf)
+        .header("X-Requested-With", "XMLHttpRequest")
+        .header("X-ASBD-ID", "129477")
+        .header("Referer", "https://www.instagram.com/")
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("rede: {e}"))?;
+    let status = resp.status().as_u16();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let low = text.trim_start().to_ascii_lowercase();
+    if low.starts_with("<!doctype") || low.starts_with("<html") {
+        return Err(LOGIN.into()); // IG serviu HTML (sessao caida) -> front pede login
+    }
+    if status >= 400 {
+        let peek: String = text.chars().take(220).collect();
+        // se o IG diz "aguarde/spam/try again" e soft-block; senao, erro real com o motivo
+        if low.contains("aguarde") || low.contains("wait a few") || low.contains("try again") || low.contains("spam") || status == 429 {
+            return Err(RATE.into());
+        }
+        return Err(format!("IG {status}: {peek}"));
+    }
+    serde_json::from_str(&text).map_err(|e| {
+        let peek: String = text.chars().take(180).collect();
+        format!("json {e}: {peek}")
+    })
 }
 
 /// Jitter derivado do relogio — evita intervalo fixo (mais fingerprintavel) nas leituras.

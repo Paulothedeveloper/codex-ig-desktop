@@ -109,7 +109,13 @@ export default function Baixar() {
       setLoaded(true);
     } catch (e) { onErr(e); } finally { setBusy(""); }
   }
-  function onErr(e: unknown) { const s = String(e); setErr(s.includes("BLOCK") || s.includes("require_login") ? "BLOCK" : s.includes(t("baixar.notFound")) ? "NOTFOUND" : s); }
+  function onErr(e: unknown) {
+    const s = String(e);
+    if (s.includes("require_login")) setErr("LOGIN");
+    else if (s.includes("ig_rate_limited") || s.includes("BLOCK")) setErr("RATE");
+    else if (s.includes(t("baixar.notFound"))) setErr("NOTFOUND");
+    else setErr(s); // erro REAL do IG (ex: "IG 404: Media not found") — mostra a verdade
+  }
 
   async function resolveUrl(m: Media): Promise<string> {
     if (m.full) return m.full;
@@ -168,7 +174,9 @@ export default function Baixar() {
         {msg && <div className="mt-3 rounded-lg border border-[#1c3a2a] bg-[#0c1a12] px-3 py-2 text-[12.5px] text-[#3ad07a]">{msg}</div>}
         {err && (
           <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2.5 text-[12.5px] text-[var(--color-coral2)]">
-            {err === "BLOCK" ? (<span className="flex flex-wrap items-center gap-2"><span className="text-[var(--color-paper)]">{t("baixar.blocked")}</span><button onClick={() => invoke("focus_ig").catch(() => {})} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[12px] font-bold text-[var(--color-teal2)]">{t("rival.openIg")}</button></span>) : err === "NOTFOUND" ? (<span>{t("baixar.notFound")} <span className="text-[var(--color-slate)]">{mode === "post" ? t("baixar.notFoundPost") : t("rival.errHint")}</span></span>) : <span>{err}</span>}
+            {err === "RATE" || err === "LOGIN" ? (
+              <span className="flex flex-wrap items-center gap-2"><span className="text-[var(--color-paper)]">{err === "LOGIN" ? t("baixar.login") : t("baixar.blocked")}</span><button onClick={() => invoke("focus_ig").catch(() => {})} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[12px] font-bold text-[var(--color-teal2)]">{t("rival.openIg")}</button></span>
+            ) : err === "NOTFOUND" ? (<span>{t("baixar.notFound")} <span className="text-[var(--color-slate)]">{mode === "post" ? t("baixar.notFoundPost") : t("rival.errHint")}</span></span>) : <span>{err}</span>}
           </div>
         )}
       </div>

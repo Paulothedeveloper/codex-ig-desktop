@@ -59,7 +59,7 @@ export default function Rival() {
       setReport(out);
     } catch (e) {
       const s = String(e);
-      setErr(s.includes("BLOCK") || s.includes("require_login") ? "BLOCK" : s.includes(t("rival.notFound")) ? "NOTFOUND" : s);
+      setErr(s.includes("require_login") ? "LOGIN" : s.includes("ig_rate_limited") || s.includes("BLOCK") ? "BLOCK" : s.includes(t("rival.notFound")) ? "NOTFOUND" : s);
     } finally { setBusy(""); }
   }
 
@@ -81,9 +81,9 @@ export default function Rival() {
         </div>
         {err && (
           <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2.5 text-[12.5px] text-[var(--color-coral2)]">
-            {err === "BLOCK" ? (
+            {err === "BLOCK" || err === "LOGIN" ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[var(--color-paper)]">{t("rival.blocked")}</span>
+                <span className="text-[var(--color-paper)]">{err === "LOGIN" ? t("baixar.login") : t("rival.blocked")}</span>
                 <button onClick={() => invoke("focus_ig").catch(() => {})} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3 py-1.5 text-[12px] font-bold text-[var(--color-teal2)]">{t("rival.openIg")}</button>
               </div>
             ) : err === "NOTFOUND" ? (
