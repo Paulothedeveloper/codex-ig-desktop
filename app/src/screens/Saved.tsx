@@ -91,6 +91,7 @@ export default function Saved() {
   const [disp, setDisp] = useState(0);
   const [absBusy, setAbsBusy] = useState(false);
   const [abs, setAbs] = useState<{ ok: number; skip: number; fail: number; dup: number; finished: boolean; tail: string[] } | null>(null);
+  const [absTotal, setAbsTotal] = useState(0); // total desta corrida (pra barra de progresso)
   const [qz, setQz] = useState<Quartzo | null>(null); // gate: Quartzo obrigatório
   const [sel, setSel] = useState<Set<string>>(new Set()); // posts selecionados p/ absorver
   // destino da absorção: auto (IA decide) | vault existente | vault novo | da coleção
@@ -122,6 +123,7 @@ export default function Saved() {
   async function absorb(codes?: string[]) {
     if (!qz?.pro) { setErr(t("saved.qzNeed")); return; }
     setAbsBusy(true); setAbs(null); setErr("");
+    setAbsTotal(codes && codes.length ? codes.length : 100); // total pra barra ao vivo
     try {
       const dest = resolveDest();
       await invoke("absorb_run", { ...(codes && codes.length ? { codes } : { limit: 100 }), dest });
@@ -132,7 +134,7 @@ export default function Saved() {
         setAbs(s);
         if (s?.finished) { if (pollRef.current) clearInterval(pollRef.current); setAbsBusy(false); reloadRec(); }
       } catch { /* segue */ }
-    }, 4000);
+    }, 900); // poll rapido = progresso em TEMPO REAL
   }
 
   // Cancela a absorção: mata o node no Rust + para o poll + recarrega os badges do que já rodou.
@@ -481,6 +483,25 @@ ${rows.join("\n")}
                 {abs?.finished ? t("saved.absDone") : t("saved.absRunning")}
               </span>
             </div>
+            {/* BARRA DE PROGRESSO ao vivo da absorção (processadas / total) + item atual */}
+            {(() => {
+              const done = (abs?.ok || 0) + (abs?.skip || 0) + (abs?.dup || 0) + (abs?.fail || 0);
+              const total = Math.max(absTotal, done);
+              const p = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+              const cur = [...(abs?.tail || [])].map(fmtLine).filter(Boolean).pop();
+              return (
+                <div className="mb-3 rounded-lg border border-[#7c3aed]/30 bg-[#090d15] p-3">
+                  <div className="mb-1.5 flex items-baseline justify-between text-[12.5px]">
+                    <span className="font-bold text-[#c4b5fd]">{t("saved.liveCreating")} {nf(done)}/{nf(total)}</span>
+                    <span className="tabular-nums text-[var(--color-slate)]">{p}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#0e1522]">
+                    <div className="h-full rounded-full bg-[linear-gradient(90deg,#a855f7,#7c3aed)] transition-all duration-300" style={{ width: `${p}%` }} />
+                  </div>
+                  {!abs?.finished && cur && <p className="mt-1.5 flex items-baseline gap-1.5 truncate text-[11.5px] text-[var(--color-slate)]"><span className={"shrink-0 font-bold " + cur.cls}>{cur.icon}</span><span className="truncate">{cur.text}</span></p>}
+                </div>
+              );
+            })()}
             {/* progresso POR ITEM ao vivo (transcrição/criação da nota) */}
             {absBusy && prog && (
               <div className="mb-3 rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3">
