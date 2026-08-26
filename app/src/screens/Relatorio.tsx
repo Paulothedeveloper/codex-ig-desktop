@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ensureAccount, saveSnapshot, growthSeries, whoLeft } from "../db";
 import { useI18n, LANGS } from "../i18n";
 import SessionError from "../SessionError";
+import Loading from "../Loading";
 
 type IgUser = { pk: string; username: string; full: string; priv: boolean; verif: boolean };
 type Graph = {
@@ -105,11 +106,7 @@ export default function Relatorio() {
         </div>
       )}
 
-      {loading && (
-        <div className="text-[var(--color-slate)] text-sm">
-          {t("report.loading")}
-        </div>
-      )}
+      {loading && <Loading label={t("report.loading")} skeleton={5} />}
 
       {err && <SessionError err={err} onRetry={load} failedKey="report.failed" />}
 

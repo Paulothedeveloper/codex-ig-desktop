@@ -31,8 +31,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {children}
       {opts && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => close(false)} />
-          <div className="relative w-full max-w-sm rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,.9)]">
+          <div className="ov absolute inset-0 bg-black/60" onClick={() => close(false)} />
+          <div className="pop relative w-full max-w-sm rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,.9)]">
             <div className="text-[14px] text-[var(--color-paper)] leading-relaxed">{opts.body}</div>
             <div className="mt-5 flex justify-end gap-2">
               <button

@@ -55,7 +55,7 @@ export default function Alvos() {
       </div>
 
       <button onClick={search} disabled={loading} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
-        <Ic n="instagram" s={17} />{loading ? t("targets.searching") : t("targets.search")}
+        {loading ? <span className="inline-block h-4 w-4 shrink-0 rounded-full border-2 border-[#04120f]/30 border-t-[#04120f] spin" /> : <Ic n="instagram" s={17} />}{loading ? t("targets.searching") : t("targets.search")}
       </button>
 
       <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-3 text-[13px]">

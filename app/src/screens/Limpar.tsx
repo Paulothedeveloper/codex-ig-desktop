@@ -123,7 +123,8 @@ export default function Limpar() {
           <p className="text-[var(--color-slate)] text-sm max-w-md mx-auto">
             {t("clean.login", { win: t("win.name") })}
           </p>
-          <button onClick={load} disabled={loading} className="mt-4 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
+          <button onClick={load} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 font-bold text-[#04120f] bg-[linear-gradient(135deg,#00e5c9,#0aa892)] hover:brightness-110 disabled:opacity-50">
+            {loading && <span className="inline-block h-4 w-4 shrink-0 rounded-full border-2 border-[#04120f]/30 border-t-[#04120f] spin" />}
             {loading ? t("clean.loading") : t("clean.loadBtn")}
           </button>
           {err && <div className="mt-4 text-left"><SessionError err={err} onRetry={load} failedKey="clean.failed" /></div>}
