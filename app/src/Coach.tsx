@@ -51,7 +51,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/60" onClick={finish} />
+      <div className="ov absolute inset-0 bg-black/60" onClick={finish} />
       {ring && (
         <div
           className="absolute rounded-2xl border-2 border-[var(--color-teal)] pointer-events-none transition-all"
@@ -59,7 +59,8 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
         />
       )}
       <div
-        className="absolute w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,.9)]"
+        key={step.id}
+        className="pop absolute w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,.9)]"
         style={card}
       >
         <div className="text-[13px] font-bold text-[var(--color-teal)]">{t("coach." + step.id + ".t")}</div>
