@@ -610,7 +610,7 @@ export default function Busca() {
           ) : (
             <div className="stagger space-y-2">
               {shown.map((h, i) => (
-                <div key={h.link + i} className="rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] transition hover:border-[var(--color-steel)]">
+                <div key={h.link + i} className="lift rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] hover:border-[var(--color-steel)]">
                   <a href={h.link} target="_blank" rel="noreferrer" className="flex gap-3 p-3">
                     {h.image ? <img src={h.image} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" /> : null}
                     <div className="min-w-0">
@@ -671,7 +671,7 @@ export default function Busca() {
                 const sc = v.stance === "pos" ? "var(--color-teal2)" : v.stance === "neg" ? "var(--color-coral2)" : "var(--color-slate)";
                 const sl = v.stance === "pos" ? t("busca.stanceSupport") : v.stance === "neg" ? t("busca.stanceAttack") : t("busca.stanceNeutral");
                 return (
-                  <div key={i} className="rounded-xl border border-[var(--color-line)] bg-[#0e1522] px-3.5 py-2.5">
+                  <div key={i} className="lift rounded-xl border border-[var(--color-line)] bg-[#0e1522] px-3.5 py-2.5">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[13.5px] font-bold text-[var(--color-paper)]">{v.name}</span>
                       {v.handle && <span className="text-[12px] text-[var(--color-slate)]">{v.handle}</span>}
@@ -692,7 +692,7 @@ export default function Busca() {
 
       {/* modal: leitura profunda (IA lê a página inteira) */}
       {deep && (
-        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
+        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
           <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.readDeepTitle")}</span>
@@ -710,7 +710,7 @@ export default function Busca() {
 
       {/* modal: resposta gerada por IA */}
       {reply && (
-        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
+        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
           <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.replyTitle")}</span>
@@ -734,7 +734,7 @@ export default function Busca() {
 
       {/* modal: estratégia (checagem / dossiê / radar / briefing) */}
       {strat && (
-        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setStrat(null)}>
+        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setStrat(null)}>
           <div className="pop flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-[#7c3aed]/40 bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[#c4b5fd]">{t("busca.strat" + (strat.kind === "check" ? "Check" : strat.kind === "dossier" ? "Dossier" : strat.kind === "radar" ? "Radar" : "Brief"))}</span>
@@ -770,7 +770,7 @@ export default function Busca() {
 
       {/* modal: quem curtiu/comentou o post do IG (cruzar Busca -> Posts) */}
       {inter && (
-        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
+        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
           <div className="pop flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.whoTitle")}</span>
@@ -810,7 +810,7 @@ export default function Busca() {
         const terms = Object.keys(byTerm).reverse();
         const dt = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
         return (
-          <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
+          <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
             <div className="pop flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.historyTitle")}</span>
@@ -853,7 +853,7 @@ export default function Busca() {
 
       {/* modal: comparar candidatos */}
       {cmp.open && (
-        <Portal><div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
+        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
           <div className="pop w-full max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.compareTitle")}</span>

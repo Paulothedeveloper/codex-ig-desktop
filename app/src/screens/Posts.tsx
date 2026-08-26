@@ -576,7 +576,7 @@ export default function Posts() {
 
       {/* relatorio unificado DENTRO do app (sem baixar; PDF vira botao) */}
       {uniData && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setUniData(null)}>
+        <div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setUniData(null)}>
           <div className="pop flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-5 py-4">
               <div>
