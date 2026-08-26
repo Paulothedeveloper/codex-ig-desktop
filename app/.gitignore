@@ -26,3 +26,7 @@ dist-ssr
 # updater signing key (SECRET - nunca commitar)
 codex-ig-updater.key
 *.updater-pass
+
+# updater signing (local, nunca commitar)
+.sign-key-path
+.env.sign
