@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../i18n";
 import { Select } from "../Select";
-import Portal from "../Portal";
+import AnimatedOverlay from "../AnimatedOverlay";
 import Help from "../Help";
 import Loading from "../Loading";
 import { exportDossierPdf } from "../pdf";
@@ -691,106 +691,106 @@ export default function Busca() {
       )}
 
       {/* modal: leitura profunda (IA lê a página inteira) */}
-      {deep && (
-        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setDeep(null)}>
-          <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={deep} onClose={() => setDeep(null)} z={40}>
+        {(d) => (
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.readDeepTitle")}</span>
               <button onClick={() => setDeep(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
             </div>
-            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{deep.title}</div>
-            {deep.text ? (
-              <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{deep.text}</p>
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{d.title}</div>
+            {d.text ? (
+              <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{d.text}</p>
             ) : (
               <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skel h-4" />)}<p className="pt-1 text-[11px] text-[var(--color-slate)]">{t("busca.reading")}</p></div>
             )}
           </div>
-        </div></Portal>
-      )}
+        )}
+      </AnimatedOverlay>
 
       {/* modal: resposta gerada por IA */}
-      {reply && (
-        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setReply(null)}>
-          <div className="pop w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={reply} onClose={() => setReply(null)} z={40}>
+        {(r) => (
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.replyTitle")}</span>
               <button onClick={() => setReply(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
             </div>
-            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{reply.h.title}</div>
-            {reply.text ? (
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{r.h.title}</div>
+            {r.text ? (
               <>
-                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{reply.text}</p>
+                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{r.text}</p>
                 <div className="mt-3 flex justify-end gap-2">
-                  <button onClick={() => navigator.clipboard.writeText(reply.text)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f]">{t("busca.copyReply")}</button>
-                  <button onClick={() => genReply(reply.h)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.regen")}</button>
+                  <button onClick={() => navigator.clipboard.writeText(r.text)} className="rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-3.5 py-2 text-[12px] font-bold text-[#04120f]">{t("busca.copyReply")}</button>
+                  <button onClick={() => genReply(r.h)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.regen")}</button>
                 </div>
               </>
             ) : (
               <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel h-4" />)}</div>
             )}
           </div>
-        </div></Portal>
-      )}
+        )}
+      </AnimatedOverlay>
 
       {/* modal: estratégia (checagem / dossiê / radar / briefing) */}
-      {strat && (
-        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setStrat(null)}>
-          <div className="pop flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-[#7c3aed]/40 bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={strat} onClose={() => setStrat(null)} z={40}>
+        {(s) => (
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-[#7c3aed]/40 bg-[var(--color-panel)] p-5">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[14px] font-bold text-[#c4b5fd]">{t("busca.strat" + (strat.kind === "check" ? "Check" : strat.kind === "dossier" ? "Dossier" : strat.kind === "radar" ? "Radar" : "Brief"))}</span>
+              <span className="text-[14px] font-bold text-[#c4b5fd]">{t("busca.strat" + (s.kind === "check" ? "Check" : s.kind === "dossier" ? "Dossier" : s.kind === "radar" ? "Radar" : "Brief"))}</span>
               <button onClick={() => setStrat(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
             </div>
-            <p className="mb-2 text-[12px] leading-snug text-[var(--color-slate)]">{t("busca.stratHint." + strat.kind)}</p>
-            {(strat.kind === "check" || strat.kind === "dossier") && (
+            <p className="mb-2 text-[12px] leading-snug text-[var(--color-slate)]">{t("busca.stratHint." + s.kind)}</p>
+            {(s.kind === "check" || s.kind === "dossier") && (
               <div className="mb-3 flex gap-2">
-                <input value={strat.input} onChange={(e) => setStrat((s) => s && { ...s, input: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") runStrat(); }}
-                  placeholder={t("busca.stratPh." + strat.kind)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[#a855f7]" />
-                <button onClick={runStrat} disabled={strat.busy || !strat.input.trim()} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-40">{strat.busy ? t("busca.stratRunning") : t("busca.stratGo")}</button>
+                <input value={s.input} onChange={(e) => setStrat((p) => p && { ...p, input: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") runStrat(); }}
+                  placeholder={t("busca.stratPh." + s.kind)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[#a855f7]" />
+                <button onClick={runStrat} disabled={s.busy || !s.input.trim()} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-40">{s.busy ? t("busca.stratRunning") : t("busca.stratGo")}</button>
               </div>
             )}
-            {(strat.kind === "radar" || strat.kind === "briefing") && !strat.out && !strat.busy && (
+            {(s.kind === "radar" || s.kind === "briefing") && !s.out && !s.busy && (
               <button onClick={runStrat} className="mb-3 self-start rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-4 py-2 text-[12.5px] font-bold text-white">{t("busca.stratGo")}</button>
             )}
             <div className="min-h-0 flex-1 overflow-auto">
-              {strat.busy ? (
+              {s.busy ? (
                 <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel h-4" />)}<p className="pt-1 text-[11px] text-[var(--color-slate)]">{t("busca.stratRunning")}</p></div>
-              ) : strat.out ? (
-                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{strat.out}</p>
+              ) : s.out ? (
+                <p className="selectable whitespace-pre-wrap rounded-lg border border-[var(--color-line)] bg-[#090d15] p-3 text-[13px] leading-relaxed text-[var(--color-ink)]">{s.out}</p>
               ) : null}
             </div>
-            {strat.out && !strat.busy && (
+            {s.out && !s.busy && (
               <div className="mt-3 flex justify-end gap-2">
-                <button onClick={() => navigator.clipboard.writeText(strat.out)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.copyReply")}</button>
+                <button onClick={() => navigator.clipboard.writeText(s.out)} className="rounded-lg border border-[var(--color-steel)] bg-[#0e1522] px-3.5 py-2 text-[12px] font-bold text-[var(--color-paper)]">{t("busca.copyReply")}</button>
                 <button onClick={stratPdf} className="rounded-lg bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-3.5 py-2 text-[12px] font-bold text-white">{t("busca.stratPdf")}</button>
               </div>
             )}
           </div>
-        </div></Portal>
-      )}
+        )}
+      </AnimatedOverlay>
 
       {/* modal: quem curtiu/comentou o post do IG (cruzar Busca -> Posts) */}
-      {inter && (
-        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setInter(null)}>
-          <div className="pop flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={inter} onClose={() => setInter(null)} z={40}>
+        {(it) => (
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.whoTitle")}</span>
               <button onClick={() => setInter(null)} className="text-[13px] text-[var(--color-slate)]">×</button>
             </div>
-            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{inter.title}</div>
-            {inter.loading ? (
+            <div className="mb-2 truncate text-[11.5px] text-[var(--color-slate)] pii">{it.title}</div>
+            {it.loading ? (
               <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skel h-8" />)}</div>
-            ) : inter.err ? (
-              <div className="rounded-lg border border-[#43221d] bg-[#1a0e0c] p-3 text-[12.5px] text-[var(--color-coral2)]">{inter.err}<div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("busca.whoErrHint")}</div></div>
+            ) : it.err ? (
+              <div className="rounded-lg border border-[#43221d] bg-[#1a0e0c] p-3 text-[12.5px] text-[var(--color-coral2)]">{it.err}<div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("busca.whoErrHint")}</div></div>
             ) : (
               <div className="selectable min-h-0 flex-1 overflow-auto rounded-xl border border-[var(--color-line)] bg-[#090d15] p-2">
-                <div className="mb-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoLiked")} ({nf(inter.likers.length)})</div>
-                {inter.likers.map((u) => (
+                <div className="mb-1 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoLiked")} ({nf(it.likers.length)})</div>
+                {it.likers.map((u) => (
                   <a key={u.pk} href={`https://instagram.com/${u.username}`} target="_blank" rel="noreferrer" className="flex items-baseline gap-2 rounded px-1.5 py-1 hover:bg-white/5">
                     <span className="text-[13px] pii">@{u.username}</span>{u.full ? <span className="truncate text-[12px] text-[var(--color-slate)] pii">· {u.full}</span> : null}
                   </a>
                 ))}
-                <div className="mb-1 mt-3 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoCommented")} ({nf(inter.comments.length)})</div>
-                {inter.comments.map((c, i) => (
+                <div className="mb-1 mt-3 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("posts.whoCommented")} ({nf(it.comments.length)})</div>
+                {it.comments.map((c, i) => (
                   <div key={c.user.pk + i} className="rounded px-1.5 py-1">
                     <a href={`https://instagram.com/${c.user.username}`} target="_blank" rel="noreferrer" className="text-[13px] font-semibold pii">@{c.user.username}</a>
                     <p className="text-[12px] text-[var(--color-slate)] pii">{c.text}</p>
@@ -799,19 +799,19 @@ export default function Busca() {
               </div>
             )}
           </div>
-        </div></Portal>
-      )}
+        )}
+      </AnimatedOverlay>
 
       {/* modal: histórico / timeline */}
-      {histOpen && (() => {
-        const hist = loadHist();
-        const byTerm: Record<string, HistEntry[]> = {};
-        for (const e of hist) (byTerm[e.term] = byTerm[e.term] || []).push(e);
-        const terms = Object.keys(byTerm).reverse();
-        const dt = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
-        return (
-          <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setHistOpen(false)}>
-            <div className="pop flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={histOpen ? {} : null} onClose={() => setHistOpen(false)} z={40}>
+        {() => {
+          const hist = loadHist();
+          const byTerm: Record<string, HistEntry[]> = {};
+          for (const e of hist) (byTerm[e.term] = byTerm[e.term] || []).push(e);
+          const terms = Object.keys(byTerm).reverse();
+          const dt = (ts: number) => new Date(ts).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
+          return (
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.historyTitle")}</span>
                 <div className="flex gap-2">
@@ -847,32 +847,32 @@ export default function Busca() {
                 </div>
               )}
             </div>
-          </div></Portal>
-        );
-      })()}
+          );
+        }}
+      </AnimatedOverlay>
 
       {/* modal: comparar candidatos */}
-      {cmp.open && (
-        <Portal><div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setCmp((c) => ({ ...c, open: false }))}>
-          <div className="pop w-full max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={cmp.open ? cmp : null} onClose={() => setCmp((c) => ({ ...c, open: false }))} z={40}>
+        {(cm) => (
+          <div className="w-full max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[14px] font-bold text-[var(--color-teal2)]">{t("busca.compareTitle")}</span>
               <button onClick={() => setCmp((c) => ({ ...c, open: false }))} className="text-[13px] text-[var(--color-slate)]">×</button>
             </div>
             <p className="mb-2 text-[12px] text-[var(--color-slate)]">{t("busca.compareHint")}</p>
             <div className="flex gap-2">
-              <input value={cmp.input} onChange={(e) => setCmp((c) => ({ ...c, input: e.target.value }))} placeholder="Fúria, Marcos Rogério, Hildo" className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
-              <button onClick={compare} disabled={!!cmp.busy} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40">{cmp.busy || t("busca.compareGo")}</button>
+              <input value={cm.input} onChange={(e) => setCmp((c) => ({ ...c, input: e.target.value }))} placeholder="Fúria, Marcos Rogério, Hildo" className="min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none focus:border-[var(--color-teal)]" />
+              <button onClick={compare} disabled={!!cm.busy} className="shrink-0 rounded-lg bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[12.5px] font-bold text-[#04120f] disabled:opacity-40">{cm.busy || t("busca.compareGo")}</button>
             </div>
-            {cmp.rows && (() => {
-              const totalVol = cmp.rows.reduce((s, r) => s + r.total, 0) || 1;
+            {cm.rows && (() => {
+              const totalVol = cm.rows.reduce((s, r) => s + r.total, 0) || 1;
               const palette = ["#00e5c9", "#ff8a5c", "#7c9cff", "#ffd166"];
               return (
                 <>
                   <div className="mt-4 rounded-xl border border-[var(--color-line)] bg-[#0e1522] p-3.5">
                     <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-teal2)]">{t("busca.shareTitle")}</div>
                     <div className="flex flex-col gap-2">
-                      {cmp.rows.map((r, i) => {
+                      {cm.rows.map((r, i) => {
                         const share = Math.round((r.total / totalVol) * 100);
                         return (
                           <div key={r.term}>
@@ -893,7 +893,7 @@ export default function Busca() {
                 <table className="w-full text-[12.5px]">
                   <thead className="text-left text-[var(--color-slate)]"><tr><th className="py-1.5">{t("busca.cTerm")}</th><th>{t("busca.cVol")}</th><th>{t("busca.cNeg")}</th><th>{t("busca.cSample")}</th></tr></thead>
                   <tbody>
-                    {cmp.rows.map((r) => (
+                    {cm.rows.map((r) => (
                       <tr key={r.term} className="border-t border-[var(--color-line)] align-top">
                         <td className="py-1.5 font-bold text-[var(--color-paper)]">{r.term}</td>
                         <td className="tabular-nums">{r.total}</td>
@@ -908,8 +908,8 @@ export default function Busca() {
               );
             })()}
           </div>
-        </div></Portal>
-      )}
+        )}
+      </AnimatedOverlay>
     </div>
   );
 }

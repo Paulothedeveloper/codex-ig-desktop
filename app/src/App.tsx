@@ -14,7 +14,7 @@ import { Logo } from "./Logo";
 import { useI18n } from "./i18n";
 import LanguageGate from "./LanguageGate";
 import Coach, { isOnboarded } from "./Coach";
-import Portal from "./Portal";
+import AnimatedOverlay from "./AnimatedOverlay";
 import Help from "./Help";
 import Titlebar from "./Titlebar";
 import { checkUpdateOnBoot, runUpdate, UPDATE_EVENT, COACH_EVENT } from "./updater";
@@ -177,21 +177,19 @@ export default function App() {
 
       {coach && <Coach onStep={(id) => setTab(id as TabId)} onClose={() => setCoach(false)} />}
 
-      {update && (
-        <Portal>
-          <div className="fixed inset-0 z-[60] ov flex items-center justify-center bg-black/70 p-4">
-            <div className="pop w-full max-w-sm rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
-              <div className="text-[15px] font-bold text-[var(--color-teal2)]">{t("update.title")}</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-slate)]">{t("update.body", { v: update.version })}</p>
-              {updErr && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{updErr}</div>}
-              <div className="mt-4 flex justify-end gap-2">
-                <button disabled={updBusy} onClick={() => { setUpdate(null); setUpdErr(""); }} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-slate)] disabled:opacity-40">{t("update.later")}</button>
-                <button disabled={updBusy} onClick={async () => { setUpdBusy(true); setUpdErr(""); try { await runUpdate(update); } catch (e) { setUpdBusy(false); setUpdErr(String(e)); } }} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] disabled:opacity-60">{updBusy ? t("update.installing") : t("update.now")}</button>
-              </div>
+      <AnimatedOverlay data={update} onClose={() => { if (!updBusy) { setUpdate(null); setUpdErr(""); } }} z={60}>
+        {(u) => (
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
+            <div className="text-[15px] font-bold text-[var(--color-teal2)]">{t("update.title")}</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-slate)]">{t("update.body", { v: u.version })}</p>
+            {updErr && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{updErr}</div>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button disabled={updBusy} onClick={() => { setUpdate(null); setUpdErr(""); }} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 text-[13px] font-bold text-[var(--color-slate)] disabled:opacity-40">{t("update.later")}</button>
+              <button disabled={updBusy} onClick={async () => { setUpdBusy(true); setUpdErr(""); try { await runUpdate(u); } catch (e) { setUpdBusy(false); setUpdErr(String(e)); } }} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2 text-[13px] font-bold text-[#04120f] disabled:opacity-60">{updBusy ? t("update.installing") : t("update.now")}</button>
             </div>
           </div>
-        </Portal>
-      )}
+        )}
+      </AnimatedOverlay>
     </div>
   );
 }
