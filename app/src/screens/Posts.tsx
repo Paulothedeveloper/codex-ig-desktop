@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useI18n, LANGS } from "../i18n";
+import AnimatedOverlay from "../AnimatedOverlay";
 import SessionError from "../SessionError";
 import MergePdf from "./MergePdf";
 import { exportInteractionsPdf, exportUnifiedPdf } from "../pdf";
@@ -575,13 +576,13 @@ export default function Posts() {
       <MergePdf />
 
       {/* relatorio unificado DENTRO do app (sem baixar; PDF vira botao) */}
-      {uniData && (
-        <div className="fixed inset-0 z-40 ov flex items-center justify-center bg-black/70 p-4" onClick={() => setUniData(null)}>
-          <div className="pop flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)]" onClick={(e) => e.stopPropagation()}>
+      <AnimatedOverlay data={uniData} onClose={() => setUniData(null)} z={40}>
+        {(u) => (
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)]">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-5 py-4">
               <div>
-                <div className="text-[15px] font-bold">{t("posts.uniTitle", { n: uniData.posts.length })}</div>
-                <div className="text-[12px] text-[var(--color-slate)]">{t("posts.uniSub", { people: uniData.rows.length, likes: uniData.totLikes, cmts: uniData.totCmts, posts: uniData.posts.length })}</div>
+                <div className="text-[15px] font-bold">{t("posts.uniTitle", { n: u.posts.length })}</div>
+                <div className="text-[12px] text-[var(--color-slate)]">{t("posts.uniSub", { people: u.rows.length, likes: u.totLikes, cmts: u.totCmts, posts: u.posts.length })}</div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 <div className="flex items-center gap-1 rounded-lg border border-[var(--color-line)] p-0.5">
@@ -595,7 +596,7 @@ export default function Posts() {
             </div>
             {/* legenda dos posts */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-[var(--color-line)] px-5 py-2 text-[11px] text-[var(--color-slate)]">
-              {uniData.posts.map((p, i) => (
+              {u.posts.map((p, i) => (
                 <span key={i}><b className="text-[var(--color-teal2)]">{p.label}</b> <span className="pii">{p.sub}</span></span>
               ))}
             </div>
@@ -621,13 +622,13 @@ export default function Posts() {
                       </td>
                       <td className="px-2 py-1.5 pii">{r.full || "-"}</td>
                       <td className="px-2 py-1.5">
-                        {r.liked.length ? r.liked.map((idx) => <span key={idx} className="mr-1 inline-block rounded bg-[#0e2a24] px-1.5 py-0.5 text-[10.5px] text-[var(--color-teal2)]">{uniData.posts[idx]?.label}</span>) : <span className="text-[var(--color-slate)]">-</span>}
+                        {r.liked.length ? r.liked.map((idx) => <span key={idx} className="mr-1 inline-block rounded bg-[#0e2a24] px-1.5 py-0.5 text-[10.5px] text-[var(--color-teal2)]">{u.posts[idx]?.label}</span>) : <span className="text-[var(--color-slate)]">-</span>}
                       </td>
                       <td className="px-2 py-1.5">
                         {r.commented.length ? (
                           <ul className="space-y-0.5">
                             {r.commented.map((c, k) => (
-                              <li key={k}><b className="text-[var(--color-teal2)]">{uniData.posts[c.post]?.label}</b> <span className="pii text-[var(--color-slate)]">{c.text || t("posts.noText")}</span></li>
+                              <li key={k}><b className="text-[var(--color-teal2)]">{u.posts[c.post]?.label}</b> <span className="pii text-[var(--color-slate)]">{c.text || t("posts.noText")}</span></li>
                             ))}
                           </ul>
                         ) : <span className="text-[var(--color-slate)]">-</span>}
@@ -638,8 +639,8 @@ export default function Posts() {
               </table>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatedOverlay>
     </div>
   );
 }

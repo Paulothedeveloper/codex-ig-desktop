@@ -87,6 +87,17 @@ img, svg, canvas { -webkit-user-drag: none; user-select: none; }
 /* backdrop de popup/modal: fade + blur (sensação premium, não corta seco) */
 .ov { animation: fadeIn .22s ease both; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 
+/* ---- ABERTURA E FECHAMENTO animados (AnimatedOverlay) ----
+   O backdrop faz fade+blur; o painel (filho direto) faz pop. No fechamento,
+   data-closing="true" inverte: fadeOut no fundo + popOut no painel. O componente
+   segura o unmount até a animação de saída terminar. */
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes popOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.985) translateY(6px); } }
+.ovx { animation: fadeIn .2s ease both; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.ovx[data-closing="true"] { animation: fadeOut .18s ease forwards; }
+.ovx > * { animation: popIn .34s cubic-bezier(.16,1,.3,1) both; }
+.ovx[data-closing="true"] > * { animation: popOut .18s cubic-bezier(.4,0,1,1) forwards; }
+
 /* hover-lift premium em cards/itens clicáveis */
 .lift { transition: transform .24s cubic-bezier(.16,1,.3,1), box-shadow .24s ease, border-color .18s ease; will-change: transform; }
 .lift:hover { transform: translateY(-2px); box-shadow: 0 16px 34px -18px rgba(0,0,0,.75), 0 0 0 1px rgba(0,229,201,.14); }
@@ -131,7 +142,7 @@ button, a, .tap { transition: background-color .18s ease, color .18s ease, borde
 button:active, .tap:active { transform: translateY(1px) scale(.995); }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen-in, .enter, .pop, .fade-img, .ov, .stagger > *, .skel, .aurora { animation: none !important; }
+  .screen-in, .enter, .pop, .fade-img, .ov, .ovx, .ovx > *, .stagger > *, .skel, .aurora { animation: none !important; }
   .lift:hover { transform: none; }
   * { transition-duration: .001s !important; }
 }

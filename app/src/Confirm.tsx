@@ -2,6 +2,7 @@
 // mesma regra do <select>). Promise-based: `if (!(await confirm({body}))) return;`. Esc/click-fora = cancela.
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "./i18n";
+import AnimatedOverlay from "./AnimatedOverlay";
 
 type Opts = { body: string; danger?: boolean };
 const Ctx = createContext<(o: Opts) => Promise<boolean>>(async () => false);
@@ -29,11 +30,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={confirm}>
       {children}
-      {opts && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="ov absolute inset-0 bg-black/60" onClick={() => close(false)} />
-          <div className="pop relative w-full max-w-sm rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,.9)]">
-            <div className="text-[14px] text-[var(--color-paper)] leading-relaxed">{opts.body}</div>
+      <AnimatedOverlay data={opts} onClose={() => close(false)} z={60} className="bg-black/60">
+        {(o) => (
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,.9)]" role="dialog" aria-modal="true">
+            <div className="text-[14px] text-[var(--color-paper)] leading-relaxed">{o.body}</div>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => close(false)}
@@ -46,7 +46,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 onClick={() => close(true)}
                 className={
                   "rounded-xl px-4 py-2 text-[13px] font-bold hover:brightness-110 " +
-                  (opts.danger
+                  (o.danger
                     ? "bg-[linear-gradient(135deg,#ff4d3d,#e0392b)] text-white"
                     : "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f]")
                 }
@@ -55,8 +55,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatedOverlay>
     </Ctx.Provider>
   );
 }

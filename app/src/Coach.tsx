@@ -24,6 +24,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
   const { t } = useI18n();
   const [i, setI] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [closing, setClosing] = useState(false);
   const step = STEPS[i];
 
   // troca a aba destacada ao avançar (contexto real)
@@ -40,7 +41,13 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
     return () => { window.clearTimeout(id); window.removeEventListener("resize", measure); };
   }, [i]);
 
-  function finish() { localStorage.setItem(ONB, "1"); onClose(); }
+  // fecha com fade-out (não corta seco): marca closing, deixa a animação rodar, aí desmonta.
+  function finish() {
+    if (closing) return;
+    localStorage.setItem(ONB, "1");
+    setClosing(true);
+    window.setTimeout(onClose, 190);
+  }
   const last = i === STEPS.length - 1;
 
   const ring = rect
@@ -50,7 +57,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
   const card = rect ? { top: Math.max(12, rect.top - 4), left: rect.right + 16 } : { top: 80, left: 260 };
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" style={{ animation: closing ? "fadeOut .18s ease forwards" : undefined }}>
       <div className="ov absolute inset-0 bg-black/60" onClick={finish} />
       {ring && (
         <div
@@ -61,7 +68,7 @@ export default function Coach({ onStep, onClose }: { onStep: (tab: string) => vo
       <div
         key={step.id}
         className="pop absolute w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,.9)]"
-        style={card}
+        style={{ ...card, ...(closing ? { animation: "popOut .18s cubic-bezier(.4,0,1,1) forwards" } : {}) }}
       >
         <div className="text-[13px] font-bold text-[var(--color-teal)]">{t("coach." + step.id + ".t")}</div>
         <div className="mt-1 text-[13px] text-[var(--color-slate)] leading-relaxed">{t("coach." + step.id + ".b")}</div>
