@@ -30,14 +30,16 @@ Leitura = risco baixo; unfollow = **você define o ritmo**, com medidor de risco
 
 ## Telas
 
-| Escolha de idioma (1ª abertura) | Instagram: Limpar & Alvos | Cliques (tracker) |
+| Estúdio: Nota da legenda (0–100, sem IA) | Instagram: Limpar & Alvos | Cliques (tracker) |
 |:---:|:---:|:---:|
-| <img src="docs/screen-gate.png" width="260" /> | <img src="docs/screen-instagram.png" width="260" /> | <img src="docs/screen-clicks.png" width="260" /> |
+| <img src="docs/screen-estudio-nota.png" alt="Estúdio: Nota da legenda" width="260" /> | <img src="docs/screen-instagram.png" alt="Instagram: Limpar e Alvos" width="260" /> | <img src="docs/screen-clicks.png" alt="Tracker de cliques" width="260" /> |
 
 ## O que faz
 
 - **Instagram:** *Limpar* (deixar de seguir quem não retribui, ritmado, com whitelist e parada automática) + *Alvos* (seguidores de concorrentes = seu público).
 - **Relatório:** seguindo/seguidores/não-retribuem/mútuos/fãs, engajamento e top posts, **crescimento de seguidores no tempo** (SQLite local) e quem deixou de te seguir.
+- **Estúdio:** analisa e gera *roteiros* e *legendas* ancorado no algoritmo atual, e a aba **Nota** dá uma **nota de qualidade 0–100** pra qualquer legenda na hora, **sem IA** (método CoSchedule + EMV: gancho, emoção, palavras de poder, legibilidade, CTA, hashtags) com correções concretas.
+- **Concorrente:** analisa o perfil de qualquer rival por objetivo. **Baixar:** foto de perfil, reel, vídeo e story. **Busca:** monitor de menções.
 - **Cliques:** tracker de cliques no link da bio (worker Cloudflare próprio), sem PII.
 - **Config:** conta, whitelist, export CSV, **5 idiomas** (PT/EN/ES/FR/DE) e privacidade.
 - **Tudo local:** cookies lidos em runtime, **nunca gravados**, sem servidor de terceiro. Auto-update assinado.
