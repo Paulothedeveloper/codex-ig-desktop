@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import Help from "../Help";
 import Loading from "../Loading";
 import { Select } from "../Select";
+import CaptionScorePanel from "../CaptionScorePanel";
 
 // Base do algoritmo IG 2026 (pesquisa web jan-ago/2026) — embutida no system prompt.
 // "Manter atualizado" = editar aqui + a nota do vault. Botão Atualizar puxa artigo fresco.
@@ -22,7 +23,7 @@ const TSE_2026 = `Regras TSE Eleicoes 2026 (Resolucao 23.755/2026):
 - Proibido conteudo fabricado/deepfake (voz/imagem falsa, fato inveridico).
 - Impulsionamento pago so identificado, por candidato/partido com CNPJ eleitoral.`;
 
-type Mode = "analyze" | "script" | "caption";
+type Mode = "analyze" | "script" | "caption" | "score";
 // Intuito de uso — o app serve qualquer nicho, o usuário escolhe. Política tem guardrail TSE.
 const USE_CASES = ["politica", "negocio", "criador", "geral"] as const;
 type UseCase = typeof USE_CASES[number];
@@ -36,6 +37,7 @@ export default function Estudio() {
   const [text, setText] = useState("");
   const [theme, setTheme] = useState("");
   const [caption, setCaption] = useState("");
+  const [scoreText, setScoreText] = useState("");
   const [goal, setGoal] = useState("alcance");
   const [format, setFormat] = useState("reel");
   const [algo, setAlgo] = useState(() => localStorage.getItem("codexig_algo") || ALGO_2026);
@@ -114,9 +116,14 @@ export default function Estudio() {
           <button onClick={() => { setMode("analyze"); setOut(""); }} className={"rounded-xl px-4 py-2 text-[13px] font-bold border " + (mode === "analyze" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f] border-transparent" : "bg-[#0e1522] border-[var(--color-steel)] text-[var(--color-slate)]")}>{t("estudio.tabAnalyze")}</button>
           <button onClick={() => { setMode("script"); setOut(""); }} className={"rounded-xl px-4 py-2 text-[13px] font-bold border " + (mode === "script" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f] border-transparent" : "bg-[#0e1522] border-[var(--color-steel)] text-[var(--color-slate)]")}>{t("estudio.tabScript")}</button>
           <button onClick={() => { setMode("caption"); setOut(""); }} className={"rounded-xl px-4 py-2 text-[13px] font-bold border " + (mode === "caption" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f] border-transparent" : "bg-[#0e1522] border-[var(--color-steel)] text-[var(--color-slate)]")}>{t("estudio.tabCaption")}</button>
+          <button onClick={() => { setMode("score"); setOut(""); }} className={"rounded-xl px-4 py-2 text-[13px] font-bold border " + (mode === "score" ? "bg-[linear-gradient(135deg,#00e5c9,#0aa892)] text-[#04120f] border-transparent" : "bg-[#0e1522] border-[var(--color-steel)] text-[var(--color-slate)]")}>{t("estudio.tabScore")}</button>
         </div>
 
-        {mode === "analyze" ? (
+        {mode === "score" ? (
+          <div className="mt-4">
+            <textarea value={scoreText} onChange={(e) => setScoreText(e.target.value)} rows={5} placeholder={t("estudio.scorePh")} className="w-full resize-y rounded-xl border border-[var(--color-line)] bg-[#090d15] px-3 py-2.5 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
+          </div>
+        ) : mode === "analyze" ? (
           <div className="mt-4">
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} placeholder={t("estudio.analyzePh")} className="w-full resize-y rounded-xl border border-[var(--color-line)] bg-[#090d15] px-3 py-2.5 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]" />
           </div>
@@ -133,14 +140,18 @@ export default function Estudio() {
           </div>
         )}
 
+        {mode !== "score" && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button onClick={run} disabled={!!busy} className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">{busy || (mode === "analyze" ? t("estudio.analyze") : mode === "caption" ? t("estudio.captionGo") : t("estudio.generate"))}</button>
           {out && <button onClick={() => navigator.clipboard.writeText(out)} className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2.5 text-[13px] font-bold text-[var(--color-paper)]">{t("busca.copyReply")}</button>}
         </div>
+        )}
+        {mode === "score" && <p className="mt-2 text-[11.5px] text-[var(--color-slate)]">{t("estudio.scoreIntro")}</p>}
         {err && <div className="mt-3 rounded-lg border border-[#43221d] bg-[#1a0e0c] px-3 py-2 text-[12.5px] text-[var(--color-coral2)]">{err}</div>}
       </div>
 
-      {busy && !out && <Loading label={busy} steps={mode === "analyze" ? [t("estudio.step1"), t("estudio.step2"), t("estudio.step3")] : mode === "caption" ? [t("estudio.stepC1"), t("estudio.stepC2")] : [t("estudio.stepR1"), t("estudio.stepR2"), t("estudio.stepR3")]} />}
+      {mode === "score" && <CaptionScorePanel text={scoreText} />}
+      {mode !== "score" && busy && !out && <Loading label={busy} steps={mode === "analyze" ? [t("estudio.step1"), t("estudio.step2"), t("estudio.step3")] : mode === "caption" ? [t("estudio.stepC1"), t("estudio.stepC2")] : [t("estudio.stepR1"), t("estudio.stepR2"), t("estudio.stepR3")]} />}
       {out && (
         <div className="pop rounded-2xl border border-[var(--color-teal)]/40 bg-[var(--color-panel)] p-5">
           <p className="selectable whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-ink)]">{out}</p>
