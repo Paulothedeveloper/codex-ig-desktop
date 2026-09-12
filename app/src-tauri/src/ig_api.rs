@@ -907,7 +907,7 @@ pub struct SavedResult {
 /// Pagina UM endpoint de salvos a partir de `start` (cursor). Devolve ate ~12 paginas.
 /// NAO perde o parcial: se o IG limitar DEPOIS de ja termos itens, devolve o que tem + cursor.
 /// So propaga erro se falhar LOGO na 1a pagina sem nada (login real / endpoint errado).
-async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: &str, total: i64) -> Result<SavedResult, String> {
+async fn saved_paginate(app: &tauri::AppHandle, _s: &Session, base: &str, start: &str, total: i64) -> Result<SavedResult, String> {
     let mut out = Vec::new();
     let mut next = start.to_string();
     let mut throttled = false;
@@ -923,7 +923,10 @@ async fn saved_paginate(app: &tauri::AppHandle, s: &Session, base: &str, start: 
             if next.is_empty() { String::new() } else { format!("&max_id={next}") }
         );
         dbg_saved(&format!("  -> GET pg{page} {url}"));
-        let j = match webview_fetch(app, &url, false, &s.csrf).await {
+        // raw_get = DIRETO via reqwest (sessionid + X-IG-App-ID + Accept:json) -> JSON real;
+        // so cai no webview se o direto falhar. Mata o HTML_ON_API (o webview servia o shell HTML
+        // do IG mesmo logado). Mesmo fix do Baixar/Concorrente.
+        let j = match raw_get(app, &url).await {
             Ok(v) => v,
             Err(e) => {
                 dbg_saved(&format!("  <- ERR {e}"));
@@ -981,9 +984,9 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
 }
 
 /// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
-pub async fn collections_list(app: &tauri::AppHandle, s: &Session) -> Result<Vec<serde_json::Value>, String> {
+pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
     let url = "https://www.instagram.com/api/v1/collections/list/?collection_types=[\"MEDIA\"]".to_string();
-    let j = webview_fetch(app, &url, false, &s.csrf).await?;
+    let j = raw_get(app, &url).await?; // direto (JSON real) -> mata o HTML_ON_API do webview
     let out = j["items"]
         .as_array()
         .map(|a| {
@@ -1027,7 +1030,7 @@ fn media_in_collection(it: &serde_json::Value, m: &serde_json::Value, cid: &str)
 /// Ref: github.com/gabrielvf1/instagram-saved-collections-fix. Early-stop ao achar a colecao inteira; parcial no throttle.
 pub async fn collection_feed(
     app: &tauri::AppHandle,
-    s: &Session,
+    _s: &Session,
     collection_id: &str,
     collection_name: &str,
     total: i64,
@@ -1052,7 +1055,7 @@ pub async fn collection_feed(
         } else {
             format!("{SAVED}?count=50&max_id={next}")
         };
-        let j = match webview_fetch(app, &url, false, &s.csrf).await {
+        let j = match raw_get(app, &url).await {
             Ok(j) => j,
             // throttle no meio: devolve o parcial ja achado (melhor que perder tudo).
             Err(e) if e == RATE && !out.is_empty() => {
