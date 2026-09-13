@@ -80,6 +80,8 @@ export default function Saved() {
   const [mode, setMode] = useState<Mode>("all");
   const [cols, setCols] = useState<Collection[]>([]);
   const [colId, setColId] = useState("");
+  const [colLoading, setColLoading] = useState(false);
+  const [colErr, setColErr] = useState(""); // erro REAL do carregamento de coleções (login/rate/IG) — não mascarar
   const [items, setItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -182,13 +184,14 @@ export default function Saved() {
   }, [prog?.count]);
 
   async function loadCollections() {
+    setColLoading(true); setColErr("");
     try {
       const c = await invoke<Collection[]>("ig_collections");
       setCols(c);
       if (c[0] && !colId) setColId(c[0].id);
-    } catch (e) { setErr(String(e)); }
+    } catch (e) { setColErr(String(e)); } finally { setColLoading(false); }
   }
-  useEffect(() => { if (mode === "collection" && cols.length === 0) loadCollections(); }, [mode]);
+  useEffect(() => { if (mode === "collection" && cols.length === 0 && !colErr) loadCollections(); }, [mode]);
 
   const doneCount = Object.values(rec).filter((r) => r.s === "done").length;
   const queuedCount = Object.values(rec).filter((r) => r.s === "queued").length;
@@ -274,6 +277,10 @@ ${rows.join("\n")}
     if (!continuingAll) { setItems([]); setSel(new Set()); }
     try {
       if (mode === "collection") {
+        // não mascarar a causa: erro real de carga > lista vazia (conta sem coleção) > ainda carregando > sem seleção
+        if (colErr) { setErr(colErr); return; }
+        if (colLoading) { setErr(t("saved.colLoading")); return; }
+        if (cols.length === 0) { setErr(t("saved.noColsMsg")); return; }
         if (!colId) { setErr(t("saved.pickCol")); return; }
         const col = cols.find((c) => c.id === colId);
         const r = await invoke<SavedItem[]>("ig_collection", { id: colId, name: col?.name || "", total: col?.count ?? 0 });
@@ -365,8 +372,17 @@ ${rows.join("\n")}
           {mode === "collection" && (
             <div className="min-w-[200px]">
               <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.collection")}</span>
-              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId} disabled={loading || absBusy}
-                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })) : [{ value: "", label: t("saved.noCols") }]} />
+              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId} disabled={loading || absBusy || colLoading}
+                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })) : [{ value: "", label: colLoading ? t("saved.colLoading") : t("saved.noCols") }]} />
+              {!colLoading && colErr && (
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--color-coral2)]">
+                  <span className="truncate">{colErr.includes("require_login") ? t("baixar.login") : colErr}</span>
+                  <button onClick={loadCollections} className="shrink-0 font-bold underline">{t("saved.retryLoad")}</button>
+                </div>
+              )}
+              {!colLoading && !colErr && cols.length === 0 && (
+                <div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("saved.noColsMsg")}</div>
+              )}
             </div>
           )}
 
