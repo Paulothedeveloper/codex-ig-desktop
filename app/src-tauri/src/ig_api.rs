@@ -985,24 +985,26 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
 
 /// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
 pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
-    // SEM filtro collection_types (o filtro ["MEDIA"] as vezes zera a lista — drift do IG). Pega tudo
+    // Manda os MESMOS collection_types que o cliente web do IG envia (retorna JSON com tudo, nao HTML)
     // e exclui SO a auto-colecao "Todos os salvos" (ALL_MEDIA_AUTO_COLLECTION), que ja e a fonte "Todos".
-    // Pagina ate acabar (contas com muitas colecoes vinham cortadas na 1a pagina).
+    // O filtro so-["MEDIA"] as vezes zerava a lista; max_id= vazio na 1a pagina fazia o IG devolver
+    // HTML -> raw_get_direct lia como LOGIN (falso deslogado). Pagina ate acabar.
     const BASE: &str = "https://www.instagram.com/api/v1/collections/list/";
+    const TYPES: &str = "collection_types=[\"ALL_MEDIA_AUTO_COLLECTION\",\"PRODUCT_AUTO_COLLECTION\",\"MEDIA\"]";
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut next = String::new();
     for _ in 0..20 {
         let url = if next.is_empty() {
-            format!("{BASE}?max_id=")
+            format!("{BASE}?{TYPES}")
         } else {
-            format!("{BASE}?max_id={next}")
+            format!("{BASE}?{TYPES}&max_id={next}")
         };
         let j = raw_get(app, &url).await?; // direto (JSON real) -> mata o HTML_ON_API do webview
         if let Some(arr) = j["items"].as_array() {
             for c in arr {
                 let ctype = c["collection_type"].as_str().unwrap_or("");
-                if ctype == "ALL_MEDIA_AUTO_COLLECTION" {
-                    continue; // e a fonte "Todos os salvos", nao uma colecao nomeada
+                if ctype == "ALL_MEDIA_AUTO_COLLECTION" || ctype == "PRODUCT_AUTO_COLLECTION" {
+                    continue; // auto-colecoes (Todos os salvos / produtos), nao colecoes nomeadas
                 }
                 let id = c["collection_id"].as_str().map(String::from)
                     .or_else(|| c["collection_id"].as_i64().map(|n| n.to_string()))
