@@ -20,6 +20,36 @@ import Titlebar from "./Titlebar";
 import { checkUpdateOnBoot, runUpdate, UPDATE_EVENT, COACH_EVENT } from "./updater";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+
+/* Estado da sessão do IG SEMPRE visível na sidebar — o usuário vê "conectado/desconectado"
+   ANTES de tentar qualquer aba (não descobre o "sessão expirou" só no meio da ação).
+   Re-checa no boot, ao focar a janela e a cada 25s. Desconectado = 1 clique abre o login. */
+function SessionPill() {
+  const { t } = useI18n();
+  const [ok, setOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const check = () => { invoke<string>("ig_session_ok").then((u) => alive && setOk(!!u)).catch(() => alive && setOk(false)); };
+    check();
+    const iv = setInterval(check, 25000);
+    window.addEventListener("focus", check);
+    return () => { alive = false; clearInterval(iv); window.removeEventListener("focus", check); };
+  }, []);
+  const dot = ok === null ? "#8a94a6" : ok ? "#25d07d" : "#ff6b57";
+  const label = ok === null ? t("shell.igChecking") : ok ? t("shell.igOn") : t("shell.igOff");
+  return (
+    <button
+      onClick={() => { if (!ok) invoke("focus_ig").catch(() => {}); }}
+      disabled={!!ok}
+      className={"mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition " + (ok ? "cursor-default" : "hover:bg-white/5")}
+      title={ok ? t("config.sessionNote") : t("shell.igOff")}
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: dot, boxShadow: ok ? "0 0 6px " + dot : "none" }} />
+      <span className={"min-w-0 truncate text-[11px] font-semibold " + (ok ? "text-[var(--color-slate)]" : "text-[var(--color-coral2)]")}>{label}</span>
+    </button>
+  );
+}
 
 /* ---- ícones SVG (zero emoji, regra do Manual) ---- */
 const ICON: Record<string, string> = {
@@ -138,7 +168,8 @@ export default function App() {
         </nav>
 
         <div className="p-3 border-t border-[var(--color-line)] text-[10.5px] text-[var(--color-slate)]">
-          <div>{t("shell.footer")}</div>
+          <SessionPill />
+          <div className="mt-2">{t("shell.footer")}</div>
           <div className="mt-1 flex items-center gap-1.5">
             <a href="https://paulocodex.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--color-teal2)] hover:underline">Paulocodex</a>
             {ver && <span className="text-[var(--color-slate)]">· v{ver}</span>}

@@ -27,6 +27,7 @@ type Dict = Record<string, string>;
 const PT: Dict = {
   "brand.tagline": "growth suite",
   "shell.footer": "local · tua sessão · zero servidor",
+  "shell.igOn": "Instagram conectado", "shell.igOff": "Instagram desconectado — entrar", "shell.igChecking": "verificando sessão…",
   "nav.instagram.label": "Instagram",
   "nav.instagram.sub": "sessão + limpeza",
   "nav.report.label": "Relatório",
@@ -415,6 +416,7 @@ const PT: Dict = {
 const EN: Dict = {
   "brand.tagline": "growth suite",
   "shell.footer": "local · your session · zero servers",
+  "shell.igOn": "Instagram connected", "shell.igOff": "Instagram disconnected — sign in", "shell.igChecking": "checking session…",
   "nav.instagram.label": "Instagram",
   "nav.instagram.sub": "session + cleanup",
   "nav.report.label": "Report",
@@ -803,6 +805,7 @@ const EN: Dict = {
 const ES: Dict = {
   "brand.tagline": "growth suite",
   "shell.footer": "local · tu sesión · cero servidores",
+  "shell.igOn": "Instagram conectado", "shell.igOff": "Instagram desconectado — entrar", "shell.igChecking": "verificando sesión…",
   "nav.instagram.label": "Instagram",
   "nav.instagram.sub": "sesión + limpieza",
   "nav.report.label": "Informe",
@@ -1191,6 +1194,7 @@ const ES: Dict = {
 const FR: Dict = {
   "brand.tagline": "growth suite",
   "shell.footer": "local · ta session · zéro serveur",
+  "shell.igOn": "Instagram connecté", "shell.igOff": "Instagram déconnecté — se connecter", "shell.igChecking": "vérification de la session…",
   "nav.instagram.label": "Instagram",
   "nav.instagram.sub": "session + nettoyage",
   "nav.report.label": "Rapport",
@@ -1579,6 +1583,7 @@ const FR: Dict = {
 const DE: Dict = {
   "brand.tagline": "growth suite",
   "shell.footer": "lokal · deine Sitzung · null Server",
+  "shell.igOn": "Instagram verbunden", "shell.igOff": "Instagram getrennt — anmelden", "shell.igChecking": "Sitzung wird geprüft…",
   "nav.instagram.label": "Instagram",
   "nav.instagram.sub": "Sitzung + Aufräumen",
   "nav.report.label": "Bericht",
