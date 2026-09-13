@@ -985,24 +985,46 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
 
 /// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
 pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
-    let url = "https://www.instagram.com/api/v1/collections/list/?collection_types=[\"MEDIA\"]".to_string();
-    let j = raw_get(app, &url).await?; // direto (JSON real) -> mata o HTML_ON_API do webview
-    let out = j["items"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|c| {
-                    serde_json::json!({
-                        "id": c["collection_id"].as_str().map(String::from)
-                            .or_else(|| c["collection_id"].as_i64().map(|n| n.to_string()))
-                            .unwrap_or_default(),
-                        "name": c["collection_name"].as_str().unwrap_or("").to_string(),
-                        "count": c["collection_media_count"].as_i64().unwrap_or(0),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    // SEM filtro collection_types (o filtro ["MEDIA"] as vezes zera a lista — drift do IG). Pega tudo
+    // e exclui SO a auto-colecao "Todos os salvos" (ALL_MEDIA_AUTO_COLLECTION), que ja e a fonte "Todos".
+    // Pagina ate acabar (contas com muitas colecoes vinham cortadas na 1a pagina).
+    const BASE: &str = "https://www.instagram.com/api/v1/collections/list/";
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut next = String::new();
+    for _ in 0..20 {
+        let url = if next.is_empty() {
+            format!("{BASE}?max_id=")
+        } else {
+            format!("{BASE}?max_id={next}")
+        };
+        let j = raw_get(app, &url).await?; // direto (JSON real) -> mata o HTML_ON_API do webview
+        if let Some(arr) = j["items"].as_array() {
+            for c in arr {
+                let ctype = c["collection_type"].as_str().unwrap_or("");
+                if ctype == "ALL_MEDIA_AUTO_COLLECTION" {
+                    continue; // e a fonte "Todos os salvos", nao uma colecao nomeada
+                }
+                let id = c["collection_id"].as_str().map(String::from)
+                    .or_else(|| c["collection_id"].as_i64().map(|n| n.to_string()))
+                    .unwrap_or_default();
+                if id.is_empty() {
+                    continue;
+                }
+                out.push(serde_json::json!({
+                    "id": id,
+                    "name": c["collection_name"].as_str().unwrap_or("").to_string(),
+                    "count": c["collection_media_count"].as_i64().unwrap_or(0),
+                }));
+            }
+        }
+        if !j["more_available"].as_bool().unwrap_or(false) {
+            break;
+        }
+        next = j["next_max_id"].as_str().unwrap_or("").to_string();
+        if next.is_empty() {
+            break;
+        }
+    }
     Ok(out)
 }
 
