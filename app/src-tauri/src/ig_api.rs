@@ -995,10 +995,11 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
 ///  - `/api/v1/collections/list/` no host `www` (app-id web) -> 404 HTML.
 ///  - o MESMO path em `i.instagram.com` (host mobile) -> 200 mas `status:fail` "something went wrong"
 ///    (a API mobile NAO aceita a sessao WEB; exigiria login mobile real com device tokens).
-/// UNICO caminho que funciona com a sessao web = o SAVED FEED (`/feed/saved/posts/`, 200). Cada item
-/// traz `saved_collection_ids`. Entao DERIVAMOS as colecoes daqui: varre o feed, agrupa por id, conta,
-/// pega uma capa. Ref: gabrielvf1/instagram-saved-collections-fix.
-pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
+/// UNICO caminho com a sessao web = o SAVED FEED (`/feed/saved/posts/`, 200). PORÉM: a requisicao DIRETA
+/// (reqwest) devolve `saved_collection_ids` VAZIO `[]` (provado no log 2026-09). O fetch DENTRO da pagina
+/// do IG (webview, mesmo contexto da ferramenta gabrielvf1 que funciona) devolve os ids PREENCHIDOS.
+/// Por isso aqui usamos `webview_fetch` (in-page), NAO `raw_get`. Deriva as colecoes agrupando por id.
+pub async fn collections_list(app: &tauri::AppHandle, s: &Session) -> Result<Vec<serde_json::Value>, String> {
     use std::collections::BTreeMap;
     const SAVED: &str = "https://www.instagram.com/api/v1/feed/saved/posts/";
     // id -> (count, cover_thumb, name)
@@ -1014,7 +1015,7 @@ pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Ve
         } else {
             format!("{SAVED}?count=50&max_id={next}")
         };
-        let j = raw_get(app, &url).await?;
+        let j = webview_fetch(app, &url, false, &s.csrf).await?;
         if let Some(arr) = j["items"].as_array() {
             for it in arr {
                 let m = if it.get("media").is_some() { &it["media"] } else { it };
