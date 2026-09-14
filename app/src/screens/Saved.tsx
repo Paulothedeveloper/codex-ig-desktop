@@ -316,7 +316,12 @@ ${rows.join("\n")}
     if (m) return { icon: "·", cls: "text-[var(--color-slate)]", text: t("saved.lgSkip") + (m[1] ? ": " + m[1] : "") };
     m = l.match(/^\[dup\]\s+\S+(?:\s+—\s+(.+))?$/);
     if (m) return { icon: "≡", cls: "text-[var(--color-slate)]", text: t("saved.lgDup") + (m[1] ? ": " + m[1] : "") };
-    if (l.startsWith("[fail")) return { icon: "×", cls: "text-[var(--color-coral2)]", text: t("saved.lgFail") };
+    m = l.match(/^\[fail\]\s+\S+\s+(.+)$/);
+    if (m || l.startsWith("[fail")) {
+      const reason = m ? m[1] : "";
+      const rate = /429|503|rate|limit|quota/i.test(reason); // IA limitou/sobrecarregou (transitório)
+      return { icon: "×", cls: "text-[var(--color-coral2)]", text: rate ? t("saved.lgFailRate") : t("saved.lgFail") };
+    }
     return null; // linhas === ... não mostra
   };
 
@@ -536,6 +541,15 @@ ${rows.join("\n")}
               <span className="text-[var(--color-slate)]">{t("saved.absDup")}: <b className="text-[var(--color-paper)] tabular-nums">{nf(abs?.dup || 0)}</b></span>
               <span className="text-[var(--color-slate)]">{t("saved.absFail")}: <b className="text-[var(--color-coral2)] tabular-nums">{nf(abs?.fail || 0)}</b></span>
             </div>
+            {/* AVISO de falha: explica o motivo (IA limitou) + que os itens seguem na fila pra tentar de novo */}
+            {(abs?.fail || 0) > 0 && (() => {
+              const rate = (abs?.tail || []).some((l) => /\[fail\]/.test(l) && /429|503|rate|limit|quota/i.test(l));
+              return (
+                <div className="pop mt-3 rounded-lg border border-[#5a3a12] bg-[#1c1305] px-3 py-2.5 text-[12px] leading-relaxed text-[#f2c879]">
+                  {rate ? t("saved.absWarnRate", { n: nf(abs?.fail || 0) }) : t("saved.absWarnFail", { n: nf(abs?.fail || 0) })}
+                </div>
+              );
+            })()}
             {abs?.tail?.length ? (
               <div className="mt-3 max-h-44 space-y-1 overflow-auto">
                 {abs.tail.map(fmtLine).filter(Boolean).reverse().map((r, i) => (
