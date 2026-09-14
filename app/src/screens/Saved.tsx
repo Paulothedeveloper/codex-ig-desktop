@@ -396,7 +396,7 @@ ${rows.join("\n")}
             <div className="min-w-[200px]">
               <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.collection")}</span>
               <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId} disabled={loading || absBusy || colLoading}
-                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })) : [{ value: "", label: colLoading ? t("saved.colLoading") : t("saved.noCols") }]} />
+                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name || (t("saved.colUnnamed") + " " + c.id.slice(-4))} (${c.count})` })) : [{ value: "", label: colLoading ? t("saved.colLoading") : t("saved.noCols") }]} />
               {!colLoading && colErr && (
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--color-coral2)]">
                   <span className="truncate">{colErr.includes("require_login") ? t("baixar.login") : colErr}</span>

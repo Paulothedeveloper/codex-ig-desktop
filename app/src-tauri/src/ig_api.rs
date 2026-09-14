@@ -991,89 +991,69 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
     Err(last_err)
 }
 
-/// As colecoes de salvos do usuario (nome = dica de tema).
-/// `/api/v1/collections/list/` e endpoint MOBILE: no host `www` (app-id web) o IG devolve 404 HTML
-/// (provado no log 2026-09). Fix: chamar em `i.instagram.com` com User-Agent de Android. A sessao web
-/// (sessionid, cookie de `.instagram.com`) vale no host mobile. Ref: instagrapi private_request.
+/// As colecoes de salvos do usuario. HISTORICO dos caminhos MORTOS (provados no log/HTTP, 2026-09):
+///  - `/api/v1/collections/list/` no host `www` (app-id web) -> 404 HTML.
+///  - o MESMO path em `i.instagram.com` (host mobile) -> 200 mas `status:fail` "something went wrong"
+///    (a API mobile NAO aceita a sessao WEB; exigiria login mobile real com device tokens).
+/// UNICO caminho que funciona com a sessao web = o SAVED FEED (`/feed/saved/posts/`, 200). Cada item
+/// traz `saved_collection_ids`. Entao DERIVAMOS as colecoes daqui: varre o feed, agrupa por id, conta,
+/// pega uma capa. Ref: gabrielvf1/instagram-saved-collections-fix.
 pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
-    let wv = app.get_webview_window("ig").ok_or("webview 'ig' nao existe")?;
-    let base: tauri::Url = "https://www.instagram.com/".parse().unwrap();
-    let cookies = wv.cookies_for_url(base).map_err(|e| format!("cookies(): {e}"))?;
-    let mut cookie_hdr = String::new();
-    let mut has_session = false;
-    for c in &cookies {
-        if !cookie_hdr.is_empty() {
-            cookie_hdr.push_str("; ");
-        }
-        cookie_hdr.push_str(c.name());
-        cookie_hdr.push('=');
-        cookie_hdr.push_str(c.value());
-        if c.name() == "sessionid" {
-            has_session = true;
-        }
-    }
-    if !has_session {
-        return Err(LOGIN.into());
-    }
-    const UA_MOBILE: &str = "Instagram 309.1.0.41.113 Android (30/11; 420dpi; 1080x2201; samsung; SM-G991B; o1s; exynos2100; en_US; 543125050)";
-    const TYPES: &str = "collection_types=[\"ALL_MEDIA_AUTO_COLLECTION\",\"PRODUCT_AUTO_COLLECTION\",\"MEDIA\"]";
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut out: Vec<serde_json::Value> = Vec::new();
+    use std::collections::BTreeMap;
+    const SAVED: &str = "https://www.instagram.com/api/v1/feed/saved/posts/";
+    // id -> (count, cover_thumb, name)
+    let mut map: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
     let mut next = String::new();
-    for _ in 0..20 {
+    let mut dumped = false;
+    for _ in 0..40 {
+        if saved_cancelled() {
+            break;
+        }
         let url = if next.is_empty() {
-            format!("https://i.instagram.com/api/v1/collections/list/?{TYPES}")
+            format!("{SAVED}?count=50")
         } else {
-            format!("https://i.instagram.com/api/v1/collections/list/?{TYPES}&max_id={next}")
+            format!("{SAVED}?count=50&max_id={next}")
         };
-        dbg_saved(&format!("[collections mobile] GET {url}"));
-        let resp = client
-            .get(&url)
-            .header("User-Agent", UA_MOBILE)
-            .header("Cookie", &cookie_hdr)
-            .header("X-IG-Capabilities", "3brTvw==")
-            .header("X-IG-Connection-Type", "WIFI")
-            .header("Accept", "*/*")
-            .send()
-            .await
-            .map_err(|e| format!("rede: {e}"))?;
-        let status = resp.status().as_u16();
-        let text = resp.text().await.map_err(|e| e.to_string())?;
-        let low = text.trim_start().to_ascii_lowercase();
-        dbg_saved(&format!("[collections mobile] status={status} len={} head={}", text.len(), text.chars().take(90).collect::<String>()));
-        if low.starts_with("<!doctype") || low.starts_with("<html") {
-            return Err(LOGIN.into());
-        }
-        if status >= 400 {
-            if status == 429 || low.contains("wait a few") || low.contains("spam") {
-                return Err(RATE.into());
-            }
-            return Err(format!("IG {status}"));
-        }
-        let j: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
-            let peek: String = text.chars().take(160).collect();
-            format!("json {e}: {peek}")
-        })?;
+        let j = raw_get(app, &url).await?;
         if let Some(arr) = j["items"].as_array() {
-            for c in arr {
-                let ctype = c["collection_type"].as_str().unwrap_or("");
-                if ctype == "ALL_MEDIA_AUTO_COLLECTION" || ctype == "PRODUCT_AUTO_COLLECTION" {
-                    continue; // auto-colecoes (Todos os salvos / produtos), nao colecoes nomeadas
+            for it in arr {
+                let m = if it.get("media").is_some() { &it["media"] } else { it };
+                // DIAGNOSTICO (1x): onde vive o NOME da colecao? Dump das chaves + campos "collection".
+                if !dumped {
+                    dumped = true;
+                    let keys: Vec<String> = m.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+                    let ckeys: Vec<String> = keys.iter().filter(|k| k.contains("collection") || k.contains("saved")).cloned().collect();
+                    dbg_saved(&format!("[collections derive] campos c/ collection|saved no item: {ckeys:?}"));
+                    dbg_saved(&format!("[collections derive] saved_collection_ids(item)={} saved_collection_ids(media)={} saved_collection_names={}",
+                        it["saved_collection_ids"], m["saved_collection_ids"], m["saved_collection_names"]));
                 }
-                let id = c["collection_id"].as_str().map(String::from)
-                    .or_else(|| c["collection_id"].as_i64().map(|n| n.to_string()))
-                    .unwrap_or_default();
-                if id.is_empty() {
-                    continue;
+                // ids da colecao (no item ou na media) + nomes paralelos se o IG mandar
+                let ids_src = m.get("saved_collection_ids").filter(|v| v.is_array())
+                    .or_else(|| it.get("saved_collection_ids").filter(|v| v.is_array()));
+                let names_src = m.get("saved_collection_names").filter(|v| v.is_array())
+                    .or_else(|| it.get("saved_collection_names").filter(|v| v.is_array()));
+                if let Some(ids) = ids_src.and_then(|v| v.as_array()) {
+                    let cover = parse_saved_media(m, "").thumb;
+                    for (i, v) in ids.iter().enumerate() {
+                        let id = v.as_str().map(String::from)
+                            .or_else(|| v.as_i64().map(|n| n.to_string()))
+                            .unwrap_or_default();
+                        if id.is_empty() {
+                            continue;
+                        }
+                        let name = names_src
+                            .and_then(|v| v.as_array())
+                            .and_then(|a| a.get(i))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let e = map.entry(id).or_insert((0, cover.clone(), String::new()));
+                        e.0 += 1;
+                        if e.2.is_empty() && !name.is_empty() {
+                            e.2 = name;
+                        }
+                    }
                 }
-                out.push(serde_json::json!({
-                    "id": id,
-                    "name": c["collection_name"].as_str().unwrap_or("").to_string(),
-                    "count": c["collection_media_count"].as_i64().unwrap_or(0),
-                }));
             }
         }
         if !j["more_available"].as_bool().unwrap_or(false) {
@@ -1084,7 +1064,10 @@ pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Ve
             break;
         }
     }
-    dbg_saved(&format!("[collections mobile] TOTAL {} colecoes nomeadas", out.len()));
+    let out: Vec<serde_json::Value> = map.into_iter()
+        .map(|(id, (count, cover, name))| serde_json::json!({ "id": id, "name": name, "count": count, "cover": cover }))
+        .collect();
+    dbg_saved(&format!("[collections derive] TOTAL {} colecoes com itens salvos", out.len()));
     Ok(out)
 }
 
