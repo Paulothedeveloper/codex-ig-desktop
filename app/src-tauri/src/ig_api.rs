@@ -111,13 +111,17 @@ pub async fn raw_get(app: &tauri::AppHandle, path_or_url: &str) -> Result<serde_
     //    estado/pagina da webview) — devolve o erro REAL do IG (status + corpo). 2) fallback webview.
     match raw_get_direct(app, &url).await {
         Ok(v) => Ok(v),
-        Err(e) if e == LOGIN => Err(LOGIN.into()), // sem sessao: nem tenta webview
         Err(edirect) => {
+            // Direto falhou. Causa comum no Windows: cookies_for_url() NAO expoe o sessionid (httpOnly)
+            // mesmo logado (ds_user_id le, sessionid nao) -> raw_get_direct acha que ta deslogado e
+            // devolve LOGIN. O fetch DENTRO da webview anexa o sessionid httpOnly sozinho
+            // (credentials:'include'), entao SEMPRE tentamos o webview antes de declarar deslogado.
+            // Se nem ds_user_id existe -> deslogado de verdade (session_from_webview devolve LOGIN aqui).
             let s = session_from_webview(app).await?;
             match webview_fetch(app, &url, false, &s.csrf).await {
                 Ok(v) => Ok(v),
-                // se os dois falharam, propaga o erro DIRETO (tem status+corpo do IG, mais util)
-                Err(_) => Err(edirect),
+                // os dois falharam: se qualquer um indicou login -> LOGIN; senao o erro direto (status+corpo).
+                Err(ewv) => Err(if edirect == LOGIN || ewv == LOGIN { LOGIN.into() } else { edirect }),
             }
         }
     }
@@ -146,6 +150,10 @@ pub async fn raw_get_direct(app: &tauri::AppHandle, url: &str) -> Result<serde_j
         }
     }
     if !has_session {
+        // diagnostico (SO nomes de cookie, nunca valores): distingue "deslogado" de "sessionid httpOnly
+        // nao exposto pelo cookies_for_url" (bug conhecido do WebView2 no Windows). raw_get cai no webview.
+        let names: Vec<&str> = cookies.iter().map(|c| c.name()).collect();
+        dbg_saved(&format!("[raw_get_direct] SEM sessionid via cookies_for_url; {} cookies: {:?}", cookies.len(), names));
         return Err(LOGIN.into()); // sessionid nao acessivel/deslogado -> tenta a via webview
     }
     let client = reqwest::Client::builder()
@@ -999,7 +1007,11 @@ pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Ve
         } else {
             format!("{BASE}?{TYPES}&max_id={next}")
         };
-        let j = raw_get(app, &url).await?; // direto (JSON real) -> mata o HTML_ON_API do webview
+        dbg_saved(&format!("[collections] GET {url}"));
+        let j = match raw_get(app, &url).await {
+            Ok(j) => { dbg_saved(&format!("[collections] OK items={}", j["items"].as_array().map(|a| a.len()).unwrap_or(0))); j }
+            Err(e) => { dbg_saved(&format!("[collections] ERR {e}")); return Err(e); }
+        };
         if let Some(arr) = j["items"].as_array() {
             for c in arr {
                 let ctype = c["collection_type"].as_str().unwrap_or("");
