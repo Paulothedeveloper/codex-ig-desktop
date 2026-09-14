@@ -102,6 +102,9 @@ export default function Saved() {
   const [destVault, setDestVault] = useState(""); // vault existente escolhido
   const [newVault, setNewVault] = useState(""); // nome do vault novo
   const [canceling, setCanceling] = useState(false); // Cancelar puxar/absorver clicado
+  const [confirmClear, setConfirmClear] = useState(false); // confirma "Remover todos" da fila
+  const [confirmAbsorb, setConfirmAbsorb] = useState<null | { codes?: string[] }>(null); // gate: absorve so ao confirmar
+  const [removing, setRemoving] = useState<Set<string>>(new Set()); // itens saindo da fila (anim de saida)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null); // interval do absorb_status
 
   useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
@@ -137,6 +140,12 @@ export default function Saved() {
         if (s?.finished) { if (pollRef.current) clearInterval(pollRef.current); setAbsBusy(false); reloadRec(); }
       } catch { /* segue */ }
     }, 900); // poll rapido = progresso em TEMPO REAL
+  }
+
+  // Gate: clicar em Absorver NAO comeca — abre a confirmacao; so o "Comecar" dispara a absorcao.
+  function requestAbsorb(codes?: string[]) {
+    if (!qz?.pro) { setErr(t("saved.qzNeed")); return; }
+    setConfirmAbsorb({ codes });
   }
 
   // Cancela a absorção: mata o node no Rust + para o poll + recarrega os badges do que já rodou.
@@ -231,14 +240,28 @@ ${rows.join("\n")}
     const rows = raw.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
     setFila(rows.map((r: any) => ({ code: r.code, caption: r.caption || "", thumb: r.thumb || "", is_video: !!r.is_video })));
   }
-  // remove um item da fila (reescreve o .jsonl + _FILA.md, tira o rec)
+  // remove um item da fila (reescreve o .jsonl + _FILA.md, tira o rec) — com anim de saida
   async function removeFromFila(code: string) {
+    setRemoving((s) => new Set(s).add(code));
+    await new Promise((r) => setTimeout(r, 170)); // deixa o fadeOut/popOut tocar antes de tirar
     const raw = (await readText(QUEUE)) || "";
     const kept = raw.split("\n").filter((l) => { const t = l.trim(); if (!t) return false; try { return JSON.parse(t).code !== code; } catch { return false; } });
     await writeText(QUEUE, kept.join("\n") + (kept.length ? "\n" : ""));
     setRec((prev) => { const n = { ...prev }; delete n[code]; return n; });
     setFila((prev) => (prev ? prev.filter((x) => x.code !== code) : prev));
+    setRemoving((s) => { const n = new Set(s); n.delete(code); return n; });
     await writeFilaMd(doneCount);
+  }
+
+  // Remove TODOS da fila (zera o .jsonl + tira os "queued" do estado; mantem os "done" ja no vault).
+  async function removeAllFromFila() {
+    setConfirmClear(false);
+    await writeText(QUEUE, "");
+    const kept = Object.fromEntries(Object.entries(rec).filter(([, r]) => r.s !== "queued")) as Record<string, Rec>;
+    setRec(kept);
+    setFila([]);
+    await writeFilaMd(Object.values(kept).filter((r) => r.s === "done").length);
+    await saveState(kept, cursor);
   }
 
   // enfileira só os NOVOS (dedup por rec); atualiza .jsonl + _FILA.md + estado.
@@ -418,11 +441,23 @@ ${rows.join("\n")}
         {/* lista da fila IN-APP (ver + remover) */}
         {fila && (
           <div className="pop mt-3 rounded-xl border border-[var(--color-line)] bg-[#090d15] p-3">
-            <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.filaTitle")} ({fila.length})</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.filaTitle")} ({fila.length})</span>
+              {fila.length > 0 && !confirmClear && (
+                <button onClick={() => setConfirmClear(true)} className="shrink-0 rounded-md border border-[#43221d] bg-[#1a0e0c] px-2.5 py-1 text-[11.5px] font-bold text-[var(--color-coral2)] hover:brightness-110">{t("saved.filaClearAll")}</button>
+              )}
+              {confirmClear && (
+                <span className="pop flex shrink-0 items-center gap-2 text-[11.5px]">
+                  <span className="text-[var(--color-slate)]">{t("saved.filaClearConfirm", { n: nf(fila.length) })}</span>
+                  <button onClick={removeAllFromFila} className="rounded-md border border-[#43221d] bg-[#1a0e0c] px-2.5 py-1 font-bold text-[var(--color-coral2)] hover:brightness-110">{t("saved.filaClearYes")}</button>
+                  <button onClick={() => setConfirmClear(false)} className="rounded-md border border-[var(--color-steel)] bg-[#0e1522] px-2.5 py-1 font-bold text-[var(--color-slate)]">{t("saved.cancel")}</button>
+                </span>
+              )}
+            </div>
             {fila.length === 0 ? <p className="text-[12.5px] text-[var(--color-slate)]">{t("saved.filaEmpty")}</p> : (
               <div className="stagger max-h-72 space-y-1 overflow-auto">
                 {fila.map((x) => (
-                  <div key={x.code} className="flex items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[#0e1522] px-2.5 py-1.5">
+                  <div key={x.code} className={"lift flex items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[#0e1522] px-2.5 py-1.5 " + (removing.has(x.code) ? "leaving" : "")}>
                     {x.thumb ? <img src={x.thumb} alt="" className="h-9 w-9 shrink-0 rounded object-cover" /> : <div className="h-9 w-9 shrink-0 rounded bg-[#0e1522]" />}
                     <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-ink)] pii">{x.caption || (x.is_video ? t("saved.liveVideo") : t("saved.livePhoto"))}</span>
                     <button onClick={() => removeFromFila(x.code)} title={t("saved.filaRemove")} className="shrink-0 rounded-md border border-[#43221d] bg-[#1a0e0c] px-2 py-1 text-[12px] font-bold text-[var(--color-coral2)] hover:brightness-110">{t("saved.filaRemove")}</button>
@@ -444,16 +479,18 @@ ${rows.join("\n")}
             <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-slate)]">{t("saved.absIntro")}</p>
           </div>
           <div className="flex shrink-0 gap-2">
-            {sel.size > 0 && !absBusy && (
-              <button onClick={() => absorb([...sel])} disabled={loading}
-                className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
+            {sel.size > 0 && !absBusy && !confirmAbsorb && (
+              <button onClick={() => requestAbsorb([...sel])} disabled={loading}
+                className="cta rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-4 py-2.5 font-bold text-[#04120f] disabled:opacity-50">
                 {t("saved.absSel", { n: nf(sel.size) })}
               </button>
             )}
-            <button onClick={() => absorb()} disabled={absBusy || loading}
-              className="rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white hover:brightness-110 active:scale-[.99] disabled:opacity-50">
-              {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
-            </button>
+            {!confirmAbsorb && (
+              <button onClick={() => requestAbsorb()} disabled={absBusy || loading}
+                className="cta rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2.5 font-bold text-white disabled:opacity-50">
+                {absBusy ? t("saved.absRunning") : t("saved.absBtn")}
+              </button>
+            )}
             {absBusy && (
               <button onClick={cancelAbsorb}
                 className="rounded-xl border border-[var(--color-coral2)]/50 bg-[#1a0e0c] px-4 py-2.5 font-bold text-[var(--color-coral2)] hover:brightness-110">
@@ -462,6 +499,25 @@ ${rows.join("\n")}
             )}
           </div>
         </div>
+
+        {/* GATE: a absorcao so COMECA quando o usuario aperta "Comecar" aqui (nao dispara sozinho no clique) */}
+        {confirmAbsorb && !absBusy && (
+          <div className="pop mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#7c3aed]/40 bg-[#0e1522] p-4">
+            <span className="text-[13px] text-[var(--color-paper)]">
+              {t("saved.absConfirm", { n: nf(confirmAbsorb.codes?.length || Math.min(100, queuedCount || 100)) })}
+            </span>
+            <div className="ml-auto flex gap-2">
+              <button onClick={() => { const c = confirmAbsorb; setConfirmAbsorb(null); absorb(c?.codes); }}
+                className="cta rounded-xl bg-[linear-gradient(135deg,#a855f7,#7c3aed)] px-5 py-2 font-bold text-white">
+                {t("saved.absStart")}
+              </button>
+              <button onClick={() => setConfirmAbsorb(null)}
+                className="rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-4 py-2 font-bold text-[var(--color-slate)]">
+                {t("saved.cancel")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* DESTINO: o usuário decide onde as notas vão parar (ou deixa a IA escolher) */}
         <div className="mt-4 border-t border-[var(--color-line)] pt-4">
