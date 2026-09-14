@@ -19,8 +19,6 @@ type SavedItem = {
   collection: string;
 };
 type SavedResult = { items: SavedItem[]; next: string; throttled: boolean };
-type Collection = { id: string; name: string; count: number };
-type Mode = "all" | "collection";
 
 // status por item: "queued" = na fila · "done"/detalhe = já virou nota detalhada no vault
 type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string; detalhe?: boolean; vault?: string };
@@ -77,11 +75,6 @@ Disparo: \`/vault\` ou início de sessão.
 
 export default function Saved() {
   const { t, nf } = useI18n();
-  const [mode, setMode] = useState<Mode>("all");
-  const [cols, setCols] = useState<Collection[]>([]);
-  const [colId, setColId] = useState("");
-  const [colLoading, setColLoading] = useState(false);
-  const [colErr, setColErr] = useState(""); // erro REAL do carregamento de coleções (login/rate/IG) — não mascarar
   const [items, setItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -96,8 +89,8 @@ export default function Saved() {
   const [absTotal, setAbsTotal] = useState(0); // total desta corrida (pra barra de progresso)
   const [qz, setQz] = useState<Quartzo | null>(null); // gate: Quartzo obrigatório
   const [sel, setSel] = useState<Set<string>>(new Set()); // posts selecionados p/ absorver
-  // destino da absorção: auto (IA decide) | vault existente | vault novo | da coleção
-  const [destMode, setDestMode] = useState<"auto" | "existing" | "new" | "collection">("auto");
+  // destino da absorção: auto (IA decide) | vault existente | vault novo
+  const [destMode, setDestMode] = useState<"auto" | "existing" | "new">("auto");
   const [vaults, setVaults] = useState<string[]>([]);
   const [destVault, setDestVault] = useState(""); // vault existente escolhido
   const [newVault, setNewVault] = useState(""); // nome do vault novo
@@ -109,15 +102,11 @@ export default function Saved() {
 
   useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
   useEffect(() => { invoke<string[]>("list_vaults").then(setVaults).catch(() => { }); }, []);
-  // saiu do modo coleção? "da coleção" deixa de valer -> volta pro auto.
-  useEffect(() => { if (mode !== "collection" && destMode === "collection") setDestMode("auto"); }, [mode, destMode]);
 
   // resolve o destino escolhido -> nome do vault (ou undefined = auto/IA decide).
-  const collName = () => cols.find((c) => c.id === colId)?.name || "";
   function resolveDest(): string | undefined {
     if (destMode === "existing") return destVault || undefined;
     if (destMode === "new") return newVault.trim() || undefined;
-    if (destMode === "collection") return collName() || undefined;
     return undefined; // auto
   }
 
@@ -192,15 +181,6 @@ export default function Saved() {
     return () => cancelAnimationFrame(raf);
   }, [prog?.count]);
 
-  async function loadCollections() {
-    setColLoading(true); setColErr("");
-    try {
-      const c = await invoke<Collection[]>("ig_collections");
-      setCols(c);
-      if (c[0] && !colId) setColId(c[0].id);
-    } catch (e) { setColErr(String(e)); } finally { setColLoading(false); }
-  }
-  useEffect(() => { if (mode === "collection" && cols.length === 0 && !colErr) loadCollections(); }, [mode]);
 
   const doneCount = Object.values(rec).filter((r) => r.s === "done").length;
   const queuedCount = Object.values(rec).filter((r) => r.s === "queued").length;
@@ -294,25 +274,10 @@ ${rows.join("\n")}
 
   async function pull(restart = false) {
     setLoading(true); setErr(""); setMsg(""); setProg(null); setCanceling(false);
-    // continuar os "geral" acumula (append); qualquer puxada FRESH (coleção/restart/1ª) LIMPA a lista
-    // anterior da tela — senão vira lixo e pesa o render.
-    const continuingAll = mode === "all" && !restart && !!cursor;
+    // continuar acumula (append); restart/1ª puxada LIMPA a lista anterior da tela (senão vira lixo).
+    const continuingAll = !restart && !!cursor;
     if (!continuingAll) { setItems([]); setSel(new Set()); }
     try {
-      if (mode === "collection") {
-        // não mascarar a causa: erro real de carga > lista vazia (conta sem coleção) > ainda carregando > sem seleção
-        if (colErr) { setErr(colErr); return; }
-        if (colLoading) { setErr(t("saved.colLoading")); return; }
-        if (cols.length === 0) { setErr(t("saved.noColsMsg")); return; }
-        if (!colId) { setErr(t("saved.pickCol")); return; }
-        const col = cols.find((c) => c.id === colId);
-        const r = await invoke<SavedItem[]>("ig_collection", { id: colId, name: col?.name || "", total: col?.count ?? 0 });
-        setItems(r);
-        const { added, rec: nr } = await enqueue(r, rec);
-        setRec(nr); await saveState(nr, cursor);
-        setMsg(added ? t("saved.queued", { n: nf(added) }) : t("saved.nothingNew"));
-        return;
-      }
       const resume = restart ? "" : cursor;
       const res = await invoke<SavedResult>("ig_saved", { resume });
       setItems((prev) => (resume ? [...prev, ...res.items] : res.items));
@@ -328,7 +293,7 @@ ${rows.join("\n")}
     }
   }
 
-  const continuing = mode === "all" && !!cursor;
+  const continuing = !!cursor;
   const pct = prog && prog.total > 0 ? Math.min(100, Math.round((prog.count / prog.total) * 100)) : 0;
 
   // recarrega o estado (rec) — pós-absorção os badges viram "✓ no vault".
@@ -386,29 +351,6 @@ ${rows.join("\n")}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.mode")}</span>
-            <Select ariaLabel={t("saved.mode")} value={mode} onChange={(v) => setMode(v as Mode)} disabled={loading || absBusy}
-              options={[{ value: "all", label: t("saved.mAll") }, { value: "collection", label: t("saved.mCollection") }]} />
-          </div>
-
-          {mode === "collection" && (
-            <div className="min-w-[200px]">
-              <span className="text-[11px] uppercase tracking-widest text-[var(--color-slate)]">{t("saved.collection")}</span>
-              <Select ariaLabel={t("saved.collection")} value={colId} onChange={setColId} disabled={loading || absBusy || colLoading}
-                options={cols.length ? cols.map((c) => ({ value: c.id, label: `${c.name || (t("saved.colUnnamed") + " " + c.id.slice(-4))} (${c.count})` })) : [{ value: "", label: colLoading ? t("saved.colLoading") : t("saved.noCols") }]} />
-              {!colLoading && colErr && (
-                <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--color-coral2)]">
-                  <span className="truncate">{colErr.includes("require_login") ? t("baixar.login") : colErr}</span>
-                  <button onClick={loadCollections} className="shrink-0 font-bold underline">{t("saved.retryLoad")}</button>
-                </div>
-              )}
-              {!colLoading && !colErr && cols.length === 0 && (
-                <div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("saved.noColsMsg")}</div>
-              )}
-            </div>
-          )}
-
           <button onClick={() => pull(false)} disabled={loading || absBusy}
             className="rounded-xl bg-[linear-gradient(135deg,#00e5c9,#0aa892)] px-5 py-2.5 font-bold text-[#04120f] hover:brightness-110 active:scale-[.99] disabled:opacity-50">
             {loading ? t("saved.pulling") : continuing ? t("saved.continue") : t("saved.pull")}
@@ -528,7 +470,6 @@ ${rows.join("\n")}
                 { value: "auto", label: t("saved.destAuto") },
                 { value: "existing", label: t("saved.destExisting") },
                 { value: "new", label: t("saved.destNew") },
-                ...(mode === "collection" && colId ? [{ value: "collection", label: t("saved.destColl") }] : []),
               ]} />
             {destMode === "existing" && (
               <div className="min-w-[220px]">
@@ -539,9 +480,6 @@ ${rows.join("\n")}
             {destMode === "new" && (
               <input value={newVault} onChange={(e) => setNewVault(e.target.value)} placeholder={t("saved.destNewPh")} disabled={absBusy || loading}
                 className="min-w-[220px] rounded-xl border border-[var(--color-steel)] bg-[#0e1522] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)] disabled:opacity-40" />
-            )}
-            {destMode === "collection" && (
-              <span className="rounded-full border border-[var(--color-steel)] px-3 py-1.5 text-[12px] text-[var(--color-paper)]">{collName() || "—"}</span>
             )}
           </div>
           <p className="mt-2 text-[11px] leading-snug text-[var(--color-slate)]">{t("saved.destHint")}</p>
