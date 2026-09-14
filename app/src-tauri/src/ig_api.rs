@@ -991,27 +991,72 @@ pub async fn saved_feed(app: &tauri::AppHandle, s: &Session, resume: &str) -> Re
     Err(last_err)
 }
 
-/// As colecoes de salvos do usuario (nome = dica de tema). `/api/v1/collections/list/`.
+/// As colecoes de salvos do usuario (nome = dica de tema).
+/// `/api/v1/collections/list/` e endpoint MOBILE: no host `www` (app-id web) o IG devolve 404 HTML
+/// (provado no log 2026-09). Fix: chamar em `i.instagram.com` com User-Agent de Android. A sessao web
+/// (sessionid, cookie de `.instagram.com`) vale no host mobile. Ref: instagrapi private_request.
 pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Vec<serde_json::Value>, String> {
-    // Manda os MESMOS collection_types que o cliente web do IG envia (retorna JSON com tudo, nao HTML)
-    // e exclui SO a auto-colecao "Todos os salvos" (ALL_MEDIA_AUTO_COLLECTION), que ja e a fonte "Todos".
-    // O filtro so-["MEDIA"] as vezes zerava a lista; max_id= vazio na 1a pagina fazia o IG devolver
-    // HTML -> raw_get_direct lia como LOGIN (falso deslogado). Pagina ate acabar.
-    const BASE: &str = "https://www.instagram.com/api/v1/collections/list/";
+    let wv = app.get_webview_window("ig").ok_or("webview 'ig' nao existe")?;
+    let base: tauri::Url = "https://www.instagram.com/".parse().unwrap();
+    let cookies = wv.cookies_for_url(base).map_err(|e| format!("cookies(): {e}"))?;
+    let mut cookie_hdr = String::new();
+    let mut has_session = false;
+    for c in &cookies {
+        if !cookie_hdr.is_empty() {
+            cookie_hdr.push_str("; ");
+        }
+        cookie_hdr.push_str(c.name());
+        cookie_hdr.push('=');
+        cookie_hdr.push_str(c.value());
+        if c.name() == "sessionid" {
+            has_session = true;
+        }
+    }
+    if !has_session {
+        return Err(LOGIN.into());
+    }
+    const UA_MOBILE: &str = "Instagram 309.1.0.41.113 Android (30/11; 420dpi; 1080x2201; samsung; SM-G991B; o1s; exynos2100; en_US; 543125050)";
     const TYPES: &str = "collection_types=[\"ALL_MEDIA_AUTO_COLLECTION\",\"PRODUCT_AUTO_COLLECTION\",\"MEDIA\"]";
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut next = String::new();
     for _ in 0..20 {
         let url = if next.is_empty() {
-            format!("{BASE}?{TYPES}")
+            format!("https://i.instagram.com/api/v1/collections/list/?{TYPES}")
         } else {
-            format!("{BASE}?{TYPES}&max_id={next}")
+            format!("https://i.instagram.com/api/v1/collections/list/?{TYPES}&max_id={next}")
         };
-        dbg_saved(&format!("[collections] GET {url}"));
-        let j = match raw_get(app, &url).await {
-            Ok(j) => { dbg_saved(&format!("[collections] OK items={}", j["items"].as_array().map(|a| a.len()).unwrap_or(0))); j }
-            Err(e) => { dbg_saved(&format!("[collections] ERR {e}")); return Err(e); }
-        };
+        dbg_saved(&format!("[collections mobile] GET {url}"));
+        let resp = client
+            .get(&url)
+            .header("User-Agent", UA_MOBILE)
+            .header("Cookie", &cookie_hdr)
+            .header("X-IG-Capabilities", "3brTvw==")
+            .header("X-IG-Connection-Type", "WIFI")
+            .header("Accept", "*/*")
+            .send()
+            .await
+            .map_err(|e| format!("rede: {e}"))?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.map_err(|e| e.to_string())?;
+        let low = text.trim_start().to_ascii_lowercase();
+        dbg_saved(&format!("[collections mobile] status={status} len={} head={}", text.len(), text.chars().take(90).collect::<String>()));
+        if low.starts_with("<!doctype") || low.starts_with("<html") {
+            return Err(LOGIN.into());
+        }
+        if status >= 400 {
+            if status == 429 || low.contains("wait a few") || low.contains("spam") {
+                return Err(RATE.into());
+            }
+            return Err(format!("IG {status}"));
+        }
+        let j: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            let peek: String = text.chars().take(160).collect();
+            format!("json {e}: {peek}")
+        })?;
         if let Some(arr) = j["items"].as_array() {
             for c in arr {
                 let ctype = c["collection_type"].as_str().unwrap_or("");
@@ -1039,6 +1084,7 @@ pub async fn collections_list(app: &tauri::AppHandle, _s: &Session) -> Result<Ve
             break;
         }
     }
+    dbg_saved(&format!("[collections mobile] TOTAL {} colecoes nomeadas", out.len()));
     Ok(out)
 }
 
