@@ -81,9 +81,10 @@ LEGENDA: "${caption}"`;
   const parts = [{ text: sys }];
   for (const fp of paths.slice(0, 8)) parts.push({ inline_data: { mime_type: "image/jpeg", data: fs.readFileSync(fp).toString("base64") } });
   const body = { contents: [{ parts }], generationConfig: { temperature: 0.2, responseMimeType: "application/json" } };
-  for (let t = 0; t < 3; t++) {
+  // backoff progressivo p/ 429 (limite) / 503 (sobrecarga): 8s, 16s, 24s, 32s — aguenta o pico transitorio.
+  for (let t = 0; t < 4; t++) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GKEY}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (r.status === 429 || r.status === 503) { await new Promise((s) => setTimeout(s, 12000)); continue; }
+    if (r.status === 429 || r.status === 503) { await new Promise((s) => setTimeout(s, 8000 * (t + 1))); continue; }
     const j = await r.json();
     if (!r.ok) throw new Error(`gemini ${r.status}`);
     return JSON.parse(j.candidates[0].content.parts[0].text);
