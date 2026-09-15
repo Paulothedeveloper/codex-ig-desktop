@@ -6,7 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 
 const HOME = os.homedir();
-const VAULTS = "G:/Meu Drive/VAULTS";
+// raiz dos vaults: env CODEXIG_VAULTS (o Rust passa) — sem caminho pessoal no repo; default neutro.
+const VAULTS = (process.env.CODEXIG_VAULTS || `${HOME}/Documents/CodexIG`).replace(/\\/g, "/");
 const DV = `${VAULTS}/WINDOWS - DAVINCI RESOLVE/7 - REELS (biblioteca)`;
 const STATE = `${VAULTS}/_INBOX-SALVOS/_FILA-ESTADO.json`;
 const LOG = `${os.tmpdir()}/codexig-absorb/absorb.log`;

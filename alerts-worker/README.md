@@ -6,7 +6,7 @@ Provado funcionando: a busca (Serper), a leitura por IA (Groq, `gpt-oss-120b`) e
 
 ## O que você precisa (uma vez)
 - Conta no **Cloudflare** (grátis) — https://dash.cloudflare.com
-- As 3 chaves que o app já usa: **Serper**, **Groq**, **Resend** (estão na sua pasta `Documents/API KEY CLAUDE CODE`).
+- As 3 chaves que o app já usa: **Serper**, **Groq**, **Resend** (na sua pasta local de chaves de API).
 
 ## Passo a passo (leigo)
 

@@ -1,7 +1,11 @@
 import { createRequire } from "module";
-const require = createRequire("C:/Users/paulo/.claude/skills/playwright-skill/node_modules/");
+import { fileURLToPath } from "url";
+import path from "path";
+// Script de build (gera PNGs do instalador). Playwright: env CODEXIG_PW (caminho do node_modules com
+// playwright) ou resolve normal. Caminhos SEM dado pessoal no repo.
+const require = createRequire(process.env.CODEXIG_PW || import.meta.url);
 const { chromium } = require("playwright");
-const INST = "D:/Projetos do Claude/Codex-IG-Desktop/app/src-tauri/installer/";
+const INST = path.dirname(fileURLToPath(import.meta.url)) + "/";
 const ORBIT = (s) => `<svg width="${s}" height="${s}" viewBox="0 0 1024 1024"><defs><linearGradient id="t" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#0aa892"/><stop offset="1" stop-color="#00e5c9"/></linearGradient><radialGradient id="g" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ff4d3d" stop-opacity=".5"/><stop offset="1" stop-color="#ff4d3d" stop-opacity="0"/></radialGradient></defs><path d="M 296 726 A 348 306 -12 0 1 694 366" fill="none" stroke="url(#t)" stroke-width="84" stroke-linecap="round"/><circle cx="704" cy="344" r="158" fill="url(#g)"/><circle cx="704" cy="344" r="76" fill="#ff4d3d"/></svg>`;
 const F = `font-family:'Segoe UI',Arial,sans-serif`;
 const header = `<body style="margin:0;width:150px;height:57px;background:#0b0e17;display:flex;align-items:center;gap:8px;padding:0 10px;box-sizing:border-box;${F}">${ORBIT(38)}<div><div style="color:#00e5c9;font-weight:800;font-size:15px;line-height:1">Codex IG</div><div style="color:#8892a0;font-size:7px;letter-spacing:1.5px">GROWTH SUITE</div></div></body>`;
