@@ -12,6 +12,9 @@ src-tauri/target/
 secrets.*
 # tauri signing / updater keys
 *.tauri-key
+.sign-key-path
+**/.sign-key-path
+.updater-pass
 # OS / editor
 .DS_Store
 Thumbs.db
