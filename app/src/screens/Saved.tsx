@@ -21,7 +21,9 @@ type SavedItem = {
 type SavedResult = { items: SavedItem[]; next: string; throttled: boolean };
 
 // status por item: "queued" = na fila · "done"/detalhe = já virou nota detalhada no vault
-type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string; detalhe?: boolean; vault?: string };
+type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string; detalhe?: boolean; vault?: string;
+  // dados do salvo (pro organizador SEM IA): legenda, capa, é vídeo, timestamp; + estado do organizador
+  cap?: string; thumb?: string; isv?: boolean; ts?: number; org?: boolean; n2?: string; vault2?: string };
 type Quartzo = { installed: boolean; pro: boolean; kind: string };
 
 // Caixa de entrada única do 2º cérebro (fora do repo — é conhecimento, vai no Drive).
@@ -182,8 +184,10 @@ export default function Saved() {
   }, [prog?.count]);
 
 
-  const doneCount = Object.values(rec).filter((r) => r.s === "done").length;
-  const queuedCount = Object.values(rec).filter((r) => r.s === "queued").length;
+  // "feito" = organizado (org, motor novo) OU absorvido (detalhe/receita, motor antigo)
+  const isDone = (r?: Rec) => !!(r && (r.org || r.detalhe || (r as any).receita));
+  const doneCount = Object.values(rec).filter(isDone).length;
+  const queuedCount = Object.values(rec).filter((r) => !isDone(r)).length;
 
   // reescreve _FILA.md (painel legível, ordenado) a partir da fila crua (.jsonl) + contagem absorvida.
   async function writeFilaMd(done: number) {
@@ -244,23 +248,33 @@ ${rows.join("\n")}
     await saveState(kept, cursor);
   }
 
-  // enfileira só os NOVOS (dedup por rec); atualiza .jsonl + _FILA.md + estado.
+  // enfileira NOVOS + faz BACKFILL da legenda/capa em itens já conhecidos que estão sem esse dado
+  // (o organizador SEM IA precisa da legenda no estado). Atualiza .jsonl + _FILA.md + estado.
   async function enqueue(pulled: SavedItem[], cur: Record<string, Rec>): Promise<{ added: number; rec: Record<string, Rec> }> {
-    const fresh = pulled.filter((i) => !cur[i.code]);
-    if (fresh.length === 0) return { added: 0, rec: cur };
-    if ((await readText(ROUTER)) === null) await writeText(ROUTER, ROUTER_MD);
-    const prev = (await readText(QUEUE)) || "";
-    const addedAt = new Date().toISOString();
-    const lines = fresh.map((i) => JSON.stringify({
-      code: i.code, media_id: i.media_id, url: igUrl(i.code),
-      is_video: i.is_video, caption: i.caption, thumb: i.thumb,
-      collection: i.collection, added_at: addedAt,
-    }));
-    await writeText(QUEUE, (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + lines.join("\n") + "\n");
     const next = { ...cur };
-    fresh.forEach((i) => (next[i.code] = { s: "queued", c: i.collection }));
+    let added = 0, backfilled = 0;
+    const freshLines: string[] = [];
+    const addedAt = new Date().toISOString();
+    for (const i of pulled) {
+      const ex = next[i.code];
+      if (!ex) {
+        next[i.code] = { s: "queued", c: i.collection, cap: i.caption || "", thumb: i.thumb || "", isv: i.is_video, ts: i.taken_at };
+        added++;
+        freshLines.push(JSON.stringify({ code: i.code, media_id: i.media_id, url: igUrl(i.code), is_video: i.is_video, caption: i.caption, thumb: i.thumb, collection: i.collection, added_at: addedAt }));
+      } else if (!ex.cap && (i.caption || i.thumb)) {
+        // item antigo sem legenda/capa no estado -> preenche (não conta como novo)
+        next[i.code] = { ...ex, cap: i.caption || "", thumb: ex.thumb || i.thumb || "", isv: i.is_video, ts: i.taken_at ?? ex.ts };
+        backfilled++;
+      }
+    }
+    if (added === 0 && backfilled === 0) return { added: 0, rec: cur };
+    if ((await readText(ROUTER)) === null) await writeText(ROUTER, ROUTER_MD);
+    if (freshLines.length) {
+      const prev = (await readText(QUEUE)) || "";
+      await writeText(QUEUE, (prev.endsWith("\n") || prev === "" ? prev : prev + "\n") + freshLines.join("\n") + "\n");
+    }
     await writeFilaMd(Object.values(next).filter((r) => r.s === "done").length);
-    return { added: fresh.length, rec: next };
+    return { added, rec: next };
   }
 
   const saveState = async (r: Record<string, Rec>, cur: string) =>
@@ -305,8 +319,9 @@ ${rows.join("\n")}
 
   const vaultShort = (v?: string) => (v === "WINDOWS - DAVINCI RESOLVE" ? "DaVinci" : v === "ESTUDOS - CONCURSO" ? "Concurso" : v === "IDEIAS SALVAS" ? "Ideias" : v || "");
   // infere o vault pelo nome da nota (itens do motor antigo tinham n mas não vault)
-  const inferVault = (r?: Rec) => r?.vault || (/^99[a-z]/.test(r?.n || "") ? "WINDOWS - DAVINCI RESOLVE" : /concurso|estudo/i.test(r?.n || "") ? "ESTUDOS - CONCURSO" : /\bIA\b|ideia/i.test(r?.n || "") ? "IDEIAS SALVAS" : "");
-  const isAbsorbed = (r?: Rec) => !!(r && (r.detalhe || (r as any).receita) && r.n && r.n !== "(skip)" && r.n !== "(sem mídia)" && r.n !== "(sem vídeo/foto)" && r.n !== "(foto/sem-vídeo)");
+  const inferVault = (r?: Rec) => r?.vault2 || r?.vault || (() => { const n = r?.n2 || r?.n || ""; return /^99[a-z]/.test(n) ? "WINDOWS - DAVINCI RESOLVE" : /concurso|estudo/i.test(n) ? "ESTUDOS - CONCURSO" : /\bIA\b|ideia|salvos/i.test(n) ? "IDEIAS SALVAS" : ""; })();
+  // organizado/absorvido de verdade (não um marcador de skip que começa com "(")
+  const isAbsorbed = (r?: Rec) => { const n = r?.n2 || r?.n || ""; return !!(r && (r.org || r.detalhe || (r as any).receita) && n && !n.startsWith("(")); };
 
   // formata linha do log do motor -> linha amigável (sem código cru) pro painel
   const fmtLine = (l: string): { icon: string; cls: string; text: string; vault?: string } | null => {
@@ -329,7 +344,7 @@ ${rows.join("\n")}
   const badge = (code: string) => {
     const r = rec[code];
     if (isAbsorbed(r)) { const v = inferVault(r); return { label: v ? `✓ ${vaultShort(v)}` : t("saved.bDone"), cls: "border-[#3ad07a]/50 text-[#3ad07a]" }; }
-    if (r && (r.detalhe || (r as any).receita)) return { label: t("saved.bSkip"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" }; // skip/sem mídia
+    if (r && (r.org || r.detalhe || (r as any).receita)) return { label: t("saved.bSkip"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" }; // skip/sem conteúdo
     if (!r) return { label: t("saved.bNew"), cls: "border-[var(--color-teal)] text-[var(--color-teal2)]" };
     return { label: t("saved.bQueued"), cls: "border-[var(--color-steel)] text-[var(--color-slate)]" };
   };
@@ -599,7 +614,7 @@ ${rows.join("\n")}
             {items.map((it, i) => {
               const b = badge(it.code);
               const rr = rec[it.code];
-              const absorbed = !!(rr && (rr.detalhe || (rr as any).receita));
+              const absorbed = !!(rr && (rr.org || rr.detalhe || (rr as any).receita));
               return (
                 <div key={it.code + i} className={"flex items-center gap-3 rounded-xl border bg-[var(--color-panel)] p-3 transition hover:border-[var(--color-steel)] " + (sel.has(it.code) ? "border-[var(--color-teal)]" : "border-[var(--color-line)]")}>
                   <input type="checkbox" title={t("saved.selHint")} checked={sel.has(it.code)} disabled={absorbed || !qz?.pro || loading || absBusy}
