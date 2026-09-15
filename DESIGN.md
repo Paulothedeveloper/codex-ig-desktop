@@ -1,6 +1,6 @@
 # Codex IG Desktop — DESIGN
 
-Identidade **Codex Arena** (mesma do tool/tracker/Paulocodex). Kit em [`brand/`](brand/) (+ vault `<vaults-root>\PC - CODEX IG\Identidade-Visual`).
+Identidade **Codex Arena** (mesma do tool/tracker/Paulocodex). Kit em [`brand/`](brand/).
 
 ## Marca
 Símbolo **"orbit"** (mark novo, direção do Paulo): arco de momentum teal subindo até um ponto coral com glow = *crescimento chegando no pico*. Fonte = SVG vetor (`brand/codex-ig-icon.svg` app icon, `brand/codex-ig-mark.svg` mark transparente). Icon set gerado via `tauri icon`.

@@ -1,0 +1,15 @@
+name: security-pii
+# Trava na nuvem: falha o push/PR se dado pessoal do dev entrar no repo publico.
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+jobs:
+  pii:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan por dado pessoal
+        run: bash scripts/check-pii.sh

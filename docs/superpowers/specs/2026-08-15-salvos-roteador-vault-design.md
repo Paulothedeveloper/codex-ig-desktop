@@ -6,7 +6,7 @@ Data: 2026-08-15 · Projeto: Codex IG Desktop · Autor: Paulo (via Claude)
 
 Paulo salva MUITA coisa no Instagram (reels de DaVinci/edição, concurso público,
 ideias de audiovisual, negócio…). Quer que esses salvos **alimentem
-automaticamente** os vaults de conhecimento (`<vaults-root>\...`), cada tema
+automaticamente** os vaults de conhecimento (`<raiz dos vaults>`), cada tema
 no vault certo — sem trabalho manual de "me manda a URL".
 
 ## A virada que simplifica
@@ -34,7 +34,7 @@ saber onde encaixar SEM ficar criando um monte de vault pra qualquer coisa."*
 - **Modo geral primeiro**: a IA classifica pelo conteúdo (frames + legenda). O modo
   "coleção IG = tema" fica como toggle (alternável quando o Paulo quiser).
 - **Encaixe semântico em vault EXISTENTE primeiro.** A IA olha os vaults que existem em
-  `G:\VAULTS` (cada um tem Home/tema) e decide onde o reel **pertence**. Viés forte a
+  `<raiz dos vaults>` (cada um tem Home/tema) e decide onde o reel **pertence**. Viés forte a
   reusar. DaVinci é guarda-chuva de: cor/colorgrading, edição, Fusion, áudio,
   audiovisual, plugins de edição.
 - **Vault novo só quando NADA existente serve** (domínio genuinamente novo). Órfão
@@ -43,7 +43,7 @@ saber onde encaixar SEM ficar criando um monte de vault pra qualquer coisa."*
 
 ## Dados / estado (sem banco — escala pequena)
 
-- Inbox: `<vaults-root>\_INBOX-SALVOS\`
+- Inbox: `<raiz dos vaults>/_INBOX-SALVOS/`
   - `_A-PROCESSAR.jsonl` — fila; 1 item/linha:
     `{code, media_id, url, is_video, caption, thumb, taken_at, collection, added_at}`
   - `_FILA-ESTADO.json` — `{seen:[shortcodes]}` pra dedup (não re-enfileira o que já entrou).

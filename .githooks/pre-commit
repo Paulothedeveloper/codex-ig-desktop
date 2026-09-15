@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Roda a trava anti-dado-pessoal antes de cada commit.
+# Ativar UMA vez neste repo:  git config core.hooksPath .githooks
+exec bash "$(git rev-parse --show-toplevel)/scripts/check-pii.sh"

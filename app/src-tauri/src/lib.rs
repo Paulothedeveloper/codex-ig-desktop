@@ -72,17 +72,38 @@ fn read_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("ler {path}: {e}"))
 }
 
-/// Resolve chave de API: prioriza o Config; se vazio, le do arquivo local do Paulo
-/// (Documents\keys\<file>). Nunca vai pro repo.
+/// Raiz dos vaults (2º cérebro). CONFIGURÁVEL por env `CODEXIG_VAULTS` (sem caminho pessoal no repo);
+/// default neutro por usuário. Fonte ÚNICA — o front e o motor (organize_saved) usam esta.
+fn vaults_root() -> String {
+    if let Ok(v) = std::env::var("CODEXIG_VAULTS") {
+        let v = v.trim();
+        if !v.is_empty() {
+            return v.replace('\\', "/");
+        }
+    }
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_else(|_| ".".into());
+    format!("{}/Documents/CodexIG", home.replace('\\', "/"))
+}
+
+/// Expõe a raiz dos vaults pro front (que monta os caminhos da fila a partir dela).
+#[tauri::command]
+fn get_vaults_root() -> String {
+    vaults_root()
+}
+
+/// Pasta local das chaves de API (fallback quando o Config está vazio). CONFIGURÁVEL por env
+/// `CODEXIG_KEYS_DIR` — sem caminho pessoal no repo. Default neutro: <perfil>/Documents.
 fn resolve_key(config: &str, file: &str) -> String {
     let c = config.trim();
     if !c.is_empty() {
         return c.to_string();
     }
-    std::env::var("USERPROFILE")
+    let dir = std::env::var("CODEXIG_KEYS_DIR").ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+        let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_else(|_| ".".into());
+        format!("{home}/Documents")
+    });
+    std::fs::read_to_string(format!("{dir}/{file}"))
         .ok()
-        .map(|h| format!("{h}\\Documents\\keys\\{file}"))
-        .and_then(|p| std::fs::read_to_string(p).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_default()
 }
@@ -577,6 +598,7 @@ fn absorb_run(
     };
     let mut cmd = std::process::Command::new("node");
     cmd.arg(&script).arg(&arg).current_dir(&work);
+    cmd.env("CODEXIG_VAULTS", vaults_root()); // raiz única (env) — sem caminho pessoal no motor
     // destino forçado pelo usuário (vault existente / novo / da coleção); vazio = auto.
     if let Some(d) = dest.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
         cmd.arg(format!("vault:{d}"));
@@ -633,10 +655,11 @@ fn absorb_status() -> Result<serde_json::Value, String> {
     }))
 }
 
-/// Lista os vaults existentes (pastas em G:\VAULTS) pro usuário escolher o destino da absorção.
+/// Lista os vaults existentes (pastas na raiz configurada) pro usuário escolher o destino.
 #[tauri::command]
 fn list_vaults() -> Vec<String> {
-    let base = std::path::Path::new("<vaults-root>");
+    let root = vaults_root();
+    let base = std::path::Path::new(&root);
     let mut v: Vec<String> = std::fs::read_dir(base)
         .map(|rd| {
             rd.filter_map(|e| e.ok())
@@ -748,6 +771,7 @@ pub fn run() {
             absorb_cancel,
             ig_saved_cancel,
             list_vaults,
+            get_vaults_root,
             quartzo_status,
             ig_capture_start,
             ig_capture_get,

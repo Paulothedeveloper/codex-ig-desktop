@@ -26,12 +26,17 @@ type Rec = { s: "queued" | "done"; c: string; v?: string; n?: string; detalhe?: 
   cap?: string; thumb?: string; isv?: boolean; ts?: number; org?: boolean; n2?: string; vault2?: string };
 type Quartzo = { installed: boolean; pro: boolean; kind: string };
 
-// Caixa de entrada única do 2º cérebro (fora do repo — é conhecimento, vai no Drive).
-const INBOX = "<vaults-root>/_INBOX-SALVOS";
-const QUEUE = `${INBOX}/_A-PROCESSAR.jsonl`;
-const STATE = `${INBOX}/_FILA-ESTADO.json`;
-const ROUTER = `${INBOX}/_ROTEADOR.md`;
-const FILA_MD = `${INBOX}/_FILA.md`;
+// Caixa de entrada do 2º cérebro. A RAIZ vem do Rust (get_vaults_root = env CODEXIG_VAULTS ou default
+// neutro) — sem caminho pessoal no repo. Preenchida no mount, antes de qualquer leitura da fila.
+let INBOX = "", QUEUE = "", STATE = "", ROUTER = "", FILA_MD = "";
+function setVaultsRoot(root: string) {
+  const r = (root || "").replace(/\\/g, "/").replace(/\/+$/, "");
+  INBOX = `${r}/_INBOX-SALVOS`;
+  QUEUE = `${INBOX}/_A-PROCESSAR.jsonl`;
+  STATE = `${INBOX}/_FILA-ESTADO.json`;
+  ROUTER = `${INBOX}/_ROTEADOR.md`;
+  FILA_MD = `${INBOX}/_FILA.md`;
+}
 
 const enc = (s: string) => Array.from(new TextEncoder().encode(s));
 async function readText(path: string): Promise<string | null> {
@@ -62,7 +67,7 @@ O app (Codex IG) só ENFILEIRA. A absorção é da IA (Claude).
 ## Passos (por item)
 1. Tema = nome da \`collection\` se tiver; senão classifica pelo conteúdo (legenda + frames).
    Frames/transcrição: skill \`transcribe-video-url\` na \`url\` (ritmado, best-effort; sem frame → legenda+capa bastam).
-2. **Encaixe semântico em vault EXISTENTE primeiro** (\`G:\\Drive\\VAULTS\`). Viés forte a reusar.
+2. **Encaixe semântico em vault EXISTENTE primeiro** (a raiz configurada dos vaults). Viés forte a reusar.
    - DaVinci é guarda-chuva de: cor/colorgrading, edição, Fusion, áudio, audiovisual, **plugins de edição**.
      → vault \`WINDOWS - DAVINCI RESOLVE\` (vira receita nos cadernos \`99a-e\` + índice + busca burra).
    - Outros temas → o vault do tema que melhor encaixa.
@@ -101,7 +106,10 @@ export default function Saved() {
   const [confirmAbsorb, setConfirmAbsorb] = useState<null | { codes?: string[] }>(null); // gate: absorve so ao confirmar
   const [removing, setRemoving] = useState<Set<string>>(new Set()); // itens saindo da fila (anim de saida)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null); // interval do absorb_status
+  const [rootReady, setRootReady] = useState(false); // raiz dos vaults carregada (antes de ler a fila)
 
+  // 1º: pega a raiz dos vaults do Rust (env CODEXIG_VAULTS ou default) e monta os caminhos da fila.
+  useEffect(() => { invoke<string>("get_vaults_root").then((r) => { setVaultsRoot(r); setRootReady(true); }).catch(() => setRootReady(true)); }, []);
   useEffect(() => { invoke<Quartzo>("quartzo_status").then(setQz).catch(() => setQz({ installed: false, pro: false, kind: "" })); }, []);
   useEffect(() => { invoke<string[]>("list_vaults").then(setVaults).catch(() => { }); }, []);
 
@@ -148,6 +156,7 @@ export default function Saved() {
 
   // carrega estado (rec + cursor); migra formato antigo {seen:[]} -> rec.
   useEffect(() => {
+    if (!rootReady) return; // espera a raiz dos vaults (senão STATE aponta pra caminho vazio)
     (async () => {
       const raw = await readText(STATE);
       if (!raw) return;
@@ -162,7 +171,7 @@ export default function Saved() {
         }
       } catch { /* corrompido → recomeça */ }
     })();
-  }, []);
+  }, [rootReady]);
 
   useEffect(() => {
     const un = listen<Progress>("saved_progress", (e) => setProg(e.payload));
