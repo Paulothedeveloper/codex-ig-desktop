@@ -567,8 +567,9 @@ fn absorb_run(
     }
     let work = std::env::temp_dir().join("codexig-absorb");
     std::fs::create_dir_all(&work).map_err(|e| format!("criar pasta: {e}"))?;
-    let script = work.join("absorb_saved.mjs");
-    std::fs::write(&script, include_str!("../../scripts/absorb_saved.mjs")).map_err(|e| format!("escrever script: {e}"))?;
+    // motor SEM IA (determinístico, offline): organiza pela legenda + capa. Não usa Gemini/crédito.
+    let script = work.join("organize_saved.mjs");
+    std::fs::write(&script, include_str!("../../scripts/organize_saved.mjs")).map_err(|e| format!("escrever script: {e}"))?;
     let _ = std::fs::write(work.join("absorb.log"), ""); // zera o log
     let arg = match codes {
         Some(c) if !c.is_empty() => format!("codes:{}", c.join(",")),
