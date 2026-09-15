@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { useI18n, LANGS, type Lang } from "../i18n";
 import { useConfirm } from "../Confirm";
@@ -24,7 +24,18 @@ export default function Config() {
   const [ver, setVer] = useState("");
   const [updMsg, setUpdMsg] = useState("");
   const [updChecking, setUpdChecking] = useState(false);
+  const [vaultRoot, setVaultRoot] = useState(""); // pasta dos vaults (2º cérebro), salva no config local
   useEffect(() => { getVersion().then(setVer).catch(() => {}); }, []);
+  useEffect(() => { invoke<string>("get_vaults_root").then(setVaultRoot).catch(() => {}); }, []);
+
+  async function saveVaultRoot(path: string) {
+    setVaultRoot(path);
+    try { await invoke("set_vaults_root", { path }); } catch { /* */ }
+  }
+  async function pickVaultRoot() {
+    const dir = await open({ directory: true, multiple: false, title: t("config.vaultsPick") });
+    if (typeof dir === "string") saveVaultRoot(dir);
+  }
 
   async function checkUpd() {
     setUpdChecking(true); setUpdMsg("");
@@ -132,6 +143,20 @@ export default function Config() {
           <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="shrink-0 rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-teal2)]">groq</a>
         </div>
         <div className="mt-1 text-[11px] text-[var(--color-slate)]">{t("config.aiHint")}</div>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
+        <div className="text-[11px] uppercase tracking-widest text-[var(--color-slate)] mb-3">{t("config.vaults")}</div>
+        <div className="text-[12px] text-[var(--color-slate)] leading-snug mb-2">{t("config.vaultsHint")}</div>
+        <div className="flex gap-2">
+          <input
+            value={vaultRoot}
+            onChange={(e) => saveVaultRoot(e.target.value)}
+            placeholder={t("config.vaultsPh")}
+            className="min-w-0 flex-1 rounded-xl border border-[var(--color-line)] bg-[#090d15] px-3 py-2 text-[13px] text-[var(--color-paper)] outline-none placeholder:text-[var(--color-slate)] focus:border-[var(--color-teal)]"
+          />
+          <button onClick={pickVaultRoot} className="shrink-0 rounded-xl px-4 py-2 text-[13px] font-bold bg-[#0e1522] border border-[var(--color-steel)] text-[var(--color-teal2)]">{t("config.vaultsPick")}</button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-panel)] p-5">
