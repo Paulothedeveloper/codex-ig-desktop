@@ -16,8 +16,9 @@ if git grep -nIE -e "$SECRETS" -- "${EXCLUDES[@]}" 1>&2; then
   echo ">> SEGREDO acima. Remova (use env/secret do CI, nunca no git)." 1>&2; fail=1
 fi
 
-# (b) DADO PESSOAL do dev — path do usuario, drive pessoal, pasta de chaves, email pessoal/@gmail.
-PII='C:[\\/]Users[\\/]paulo|Drive|G:[\\/]VAULTS|Documents[\\/].*API KEY|user[0-9]*@|[A-Za-z0-9._%+-]+@gmail\.com'
+# (b) DADO PESSOAL — GENERICO (pega qualquer usuario/drive; sem nome literal no arquivo).
+# home de usuario Windows, Google Drive (Meu.Drive), raiz VAULTS, pasta de chaves, e-mail gmail.
+PII='[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+|Meu.Drive|[A-Za-z]:[\\/]VAULTS|Documents[\\/].*API KEY|[A-Za-z0-9._%+-]+@gmail\.com'
 if git grep -nIE -e "$PII" -- "${EXCLUDES[@]}" 1>&2; then
   echo ">> DADO PESSOAL acima. Use env CODEXIG_VAULTS / CODEXIG_KEYS_DIR ou caminho generico." 1>&2; fail=1
 fi
