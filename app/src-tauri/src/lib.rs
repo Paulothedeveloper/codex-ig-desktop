@@ -72,9 +72,22 @@ fn read_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("ler {path}: {e}"))
 }
 
-/// Raiz dos vaults (2º cérebro). CONFIGURÁVEL por env `CODEXIG_VAULTS` (sem caminho pessoal no repo);
-/// default neutro por usuário. Fonte ÚNICA — o front e o motor (organize_saved) usam esta.
+/// Arquivo de config local (fora do repo) onde o usuário grava a pasta dos vaults pela tela Config.
+/// `%APPDATA%/com.paulocodex.codexig/vaults_root.txt`. Nenhum caminho pessoal vive no código.
+fn vaults_cfg_path() -> Option<std::path::PathBuf> {
+    let base = std::env::var("APPDATA").or_else(|_| std::env::var("HOME")).ok()?;
+    Some(std::path::Path::new(&base).join("com.paulocodex.codexig").join("vaults_root.txt"))
+}
+
+/// Raiz dos vaults (2º cérebro). Ordem: (1) config do app (tela Config) (2) env `CODEXIG_VAULTS`
+/// (3) default neutro. SEM caminho pessoal no repo. Fonte ÚNICA — front + motor usam esta.
 fn vaults_root() -> String {
+    if let Some(s) = vaults_cfg_path().and_then(|p| std::fs::read_to_string(p).ok()) {
+        let s = s.trim();
+        if !s.is_empty() {
+            return s.replace('\\', "/");
+        }
+    }
     if let Ok(v) = std::env::var("CODEXIG_VAULTS") {
         let v = v.trim();
         if !v.is_empty() {
@@ -89,6 +102,16 @@ fn vaults_root() -> String {
 #[tauri::command]
 fn get_vaults_root() -> String {
     vaults_root()
+}
+
+/// Grava a pasta dos vaults escolhida pelo usuário na tela Config (config local, não vai pro repo).
+#[tauri::command]
+fn set_vaults_root(path: String) -> Result<(), String> {
+    let p = vaults_cfg_path().ok_or("sem pasta de config")?;
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&p, path.trim()).map_err(|e| e.to_string())
 }
 
 /// Pasta local das chaves de API (fallback quando o Config está vazio). CONFIGURÁVEL por env
@@ -772,6 +795,7 @@ pub fn run() {
             ig_saved_cancel,
             list_vaults,
             get_vaults_root,
+            set_vaults_root,
             quartzo_status,
             ig_capture_start,
             ig_capture_get,
